@@ -920,7 +920,7 @@ function startApiServer() {
       }
 
       // GET /state - Public state info
-      if (req.method === 'GET' && req.url === '/state') {
+      if (req.method === 'GET' && req.url.startsWith('/state')) {
         const pool = getPoolReserves();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
