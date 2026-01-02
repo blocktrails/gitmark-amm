@@ -494,8 +494,8 @@
     window.nostrTools = nostrTools;
     window.blocktrails = blocktrails;
 
-    const STATE_URL = 'https://solid.social/mel/public/gitmark-amm/state.json';
-    const SELL_API = 'http://localhost:3456/sell'; // Local sell API (run: node src/sell-api.js)
+    const STATE_URL = 'https://api.solid.social/state';
+    const SELL_API = 'https://api.solid.social/sell'; // Local sell API (run: node src/sell-api.js)
     const AMM_PUBKEY = '034e138880a395b71336ee922313f3b86abd0fc29ddc7a58c5efba9d82132f53ef';
     const AMM_ADDRESS = 'tb1pfcfc3q9rjkm3xdhwjg338uacd27sls5am3a93300h2wcyye020hsxy40ve';
 
@@ -646,9 +646,9 @@
       if (!state) return;
 
       // Pool
-      document.getElementById('satsReserve').textContent = formatNum(state.amm.satsReserve);
-      document.getElementById('tokenReserve').textContent = formatNum(state.amm.tokenReserve);
-      document.getElementById('price').textContent = (state.amm.satsReserve / state.amm.tokenReserve).toFixed(2);
+      document.getElementById('satsReserve').textContent = formatNum(state.pool.satsReserve);
+      document.getElementById('tokenReserve').textContent = formatNum(state.pool.tokenReserve);
+      document.getElementById('price').textContent = (state.pool.satsReserve / state.pool.tokenReserve).toFixed(2);
 
       // Wallet
       if (privkey) {
@@ -729,9 +729,9 @@
 
       let output;
       if (swapMode === 'buy') {
-        output = getAmountOut(input, state.amm.satsReserve, state.amm.tokenReserve);
+        output = getAmountOut(input, state.pool.satsReserve, state.pool.tokenReserve);
       } else {
-        output = getAmountOut(input, state.amm.tokenReserve, state.amm.satsReserve);
+        output = getAmountOut(input, state.pool.tokenReserve, state.pool.satsReserve);
       }
       document.getElementById('outputAmount').value = formatNum(output);
     };
@@ -787,7 +787,7 @@
       btn.textContent = 'Checking...';
 
       try {
-        const res = await fetch(API_BASE + '/check', { method: 'POST' });
+        const res = await fetch('https://api.solid.social/check', { method: 'POST' });
         const data = await res.json();
 
         if (res.status === 429) {
@@ -829,7 +829,7 @@
 
       if (swapMode === 'buy') {
         // Buy mode: show deposit instructions
-        const output = getAmountOut(input, state.amm.satsReserve, state.amm.tokenReserve);
+        const output = getAmountOut(input, state.pool.satsReserve, state.pool.tokenReserve);
         debug('Buy GSAT', {
           action: 'DEPOSIT',
           send: `${formatNum(input)} sats`,
@@ -844,7 +844,7 @@
           return;
         }
 
-        const satsOut = getAmountOut(input, state.amm.tokenReserve, state.amm.satsReserve);
+        const satsOut = getAmountOut(input, state.pool.tokenReserve, state.pool.satsReserve);
 
         // Create signed sell request
         const sellRequest = {
