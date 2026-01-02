@@ -4,223 +4,329 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GitSat AMM</title>
-  <script src="https://unpkg.com/@anthropic-ai/sdk@0.24.3/dist/web.js"></script>
   <script type="module" src="https://esm.sh/nostr-tools@2.7.0"></script>
-  <script src="https://unpkg.com/isomorphic-git@1.25.6/index.umd.min.js"></script>
-  <script src="https://unpkg.com/@isomorphic-git/lightning-fs@4.6.0/dist/lightning-fs.min.js"></script>
   <script type="module" src="https://esm.sh/blocktrails@0.0.11"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
-      color: #e0e0e0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f6fc;
+      color: #0d111c;
       min-height: 100vh;
       padding: 20px;
     }
-    .container { max-width: 800px; margin: 0 auto; }
-    h1 {
+    .container { max-width: 480px; margin: 0 auto; }
+
+    .header {
       text-align: center;
-      margin-bottom: 10px;
-      font-size: 2.5em;
-      background: linear-gradient(90deg, #f7931a, #ffab40);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      margin-bottom: 24px;
     }
-    .subtitle { text-align: center; color: #888; margin-bottom: 30px; }
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 8px;
+      color: #0d111c;
+    }
+    .subtitle { color: #7780a0; font-size: 0.95em; }
 
     .card {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px;
-      padding: 24px;
-      margin-bottom: 20px;
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 20px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
     }
-    .card h2 { margin-bottom: 16px; color: #f7931a; font-size: 1.2em; }
+    .card h2 {
+      margin-bottom: 12px;
+      color: #7780a0;
+      font-size: 0.85em;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
 
     .pool-stats {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
+      gap: 12px;
       text-align: center;
     }
-    .stat { padding: 16px; background: rgba(0,0,0,0.2); border-radius: 12px; }
-    .stat-value { font-size: 1.8em; font-weight: bold; color: #fff; }
-    .stat-label { color: #888; font-size: 0.9em; margin-top: 4px; }
-
-    .swap-box {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    .stat {
+      padding: 12px 8px;
+      background: #f5f6fc;
+      border-radius: 12px;
     }
-    .input-group {
+    .stat-value {
+      font-size: 1.3em;
+      font-weight: 600;
+      color: #0d111c;
+    }
+    .stat-label {
+      color: #7780a0;
+      font-size: 0.8em;
+      margin-top: 4px;
+    }
+
+    .swap-card {
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 20px;
+      padding: 8px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+
+    .input-section {
+      background: #f5f6fc;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 4px;
+    }
+    .input-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.85em;
+      color: #7780a0;
+    }
+    .input-row {
       display: flex;
       align-items: center;
-      background: rgba(0,0,0,0.3);
-      border-radius: 12px;
-      padding: 12px 16px;
+      justify-content: space-between;
     }
-    .input-group input {
+    .input-row input {
       flex: 1;
       background: none;
       border: none;
-      color: #fff;
-      font-size: 1.5em;
+      color: #0d111c;
+      font-size: 2em;
+      font-weight: 500;
       outline: none;
       width: 100%;
     }
-    .input-group .token-label {
-      color: #f7931a;
-      font-weight: bold;
-      margin-left: 12px;
+    .input-row input::placeholder { color: #c3c5cb; }
+    .token-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      padding: 6px 10px 6px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+      color: #0d111c;
+      border: 1px solid #e8ecfb;
+    }
+    .token-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .token-icon.btc { background: #f7931a; color: #fff; }
+    .token-icon.gsat { background: linear-gradient(135deg, #fc72ff, #8b5cf6); color: #fff; }
+
+    .swap-arrow-container {
+      display: flex;
+      justify-content: center;
+      margin: -12px 0;
+      position: relative;
+      z-index: 1;
     }
     .swap-arrow {
-      text-align: center;
-      font-size: 1.5em;
-      color: #666;
-    }
-    .output-preview {
-      text-align: center;
-      padding: 12px;
-      background: rgba(247, 147, 26, 0.1);
-      border-radius: 8px;
-      color: #f7931a;
-    }
-
-    button {
-      background: linear-gradient(90deg, #f7931a, #ffab40);
-      color: #000;
-      border: none;
-      padding: 14px 28px;
+      background: #f5f6fc;
+      border: 4px solid #fff;
       border-radius: 12px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #7780a0;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .swap-arrow:hover { transform: rotate(180deg); }
+
+    .swap-btn {
+      background: linear-gradient(135deg, #fc72ff, #8b5cf6);
+      color: #fff;
+      border: none;
+      padding: 16px;
+      border-radius: 16px;
       font-size: 1.1em;
-      font-weight: bold;
+      font-weight: 600;
       cursor: pointer;
       width: 100%;
-      transition: transform 0.1s;
+      margin-top: 8px;
+      transition: opacity 0.2s;
     }
-    button:hover { transform: scale(1.02); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .swap-btn:hover { opacity: 0.9; }
+    .swap-btn:disabled {
+      background: #e8ecfb;
+      color: #7780a0;
+      cursor: not-allowed;
+    }
 
-    .tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-    .tab {
-      flex: 1;
+    .wallet-section {
+      background: #f5f6fc;
+      border-radius: 12px;
       padding: 12px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      color: #888;
-      cursor: pointer;
-      text-align: center;
-      transition: all 0.2s;
+      margin-bottom: 12px;
     }
-    .tab.active {
-      background: rgba(247, 147, 26, 0.2);
-      border-color: #f7931a;
-      color: #f7931a;
-    }
-
-    .leaderboard {
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    .leaderboard-row {
+    .wallet-row {
       display: flex;
       justify-content: space-between;
-      padding: 12px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      align-items: center;
     }
-    .leaderboard-row:last-child { border-bottom: none; }
-    .rank { color: #f7931a; font-weight: bold; width: 30px; }
-    .address { color: #888; font-family: monospace; font-size: 0.9em; flex: 1; margin: 0 12px; }
-    .balance { font-weight: bold; }
+    .wallet-label { color: #7780a0; font-size: 0.85em; }
+    .wallet-value { font-weight: 600; font-family: monospace; font-size: 0.85em; }
+    .wallet-balance {
+      font-size: 1.5em;
+      font-weight: 600;
+      background: linear-gradient(135deg, #fc72ff, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
 
     .key-input {
       width: 100%;
       padding: 12px;
-      background: rgba(0,0,0,0.3);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      color: #fff;
-      font-family: monospace;
-      margin-bottom: 12px;
-    }
-    .key-actions { display: flex; gap: 8px; margin-bottom: 16px; }
-    .key-actions button { flex: 1; padding: 10px; font-size: 0.9em; }
-
-    .your-balance {
-      text-align: center;
-      padding: 16px;
-      background: rgba(247, 147, 26, 0.1);
+      background: #fff;
+      border: 1px solid #e8ecfb;
       border-radius: 12px;
-      margin-bottom: 16px;
+      color: #0d111c;
+      font-family: monospace;
+      font-size: 0.85em;
+      margin-bottom: 8px;
     }
-    .your-balance .amount { font-size: 2em; font-weight: bold; color: #f7931a; }
-    .your-balance .label { color: #888; }
+    .key-input:focus { border-color: #fc72ff; outline: none; }
 
-    .status {
+    .btn-row { display: flex; gap: 8px; }
+    .btn-secondary {
+      flex: 1;
+      padding: 10px;
+      background: #f5f6fc;
+      border: 1px solid #e8ecfb;
+      border-radius: 12px;
+      color: #0d111c;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover { background: #e8ecfb; }
+
+    .leaderboard-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #f5f6fc;
+    }
+    .leaderboard-row:last-child { border-bottom: none; }
+    .rank {
+      width: 28px;
+      height: 28px;
+      background: #f5f6fc;
+      border-radius: 8px;
       display: flex;
       align-items: center;
-      gap: 8px;
       justify-content: center;
-      padding: 8px;
-      margin-bottom: 16px;
+      font-weight: 600;
+      font-size: 0.85em;
+      color: #7780a0;
     }
-    .dot {
+    .rank.gold { background: #fef3c7; color: #d97706; }
+    .rank.silver { background: #f3f4f6; color: #6b7280; }
+    .rank.bronze { background: #fed7aa; color: #c2410c; }
+    .address {
+      color: #7780a0;
+      font-family: monospace;
+      font-size: 0.85em;
+      flex: 1;
+      margin: 0 12px;
+    }
+    .balance { font-weight: 600; }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px;
+      font-size: 0.85em;
+      color: #7780a0;
+    }
+    .status-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #666;
+      background: #c3c5cb;
     }
-    .dot.synced { background: #10b981; }
-    .dot.syncing { background: #f59e0b; animation: pulse 1s infinite; }
-    .dot.error { background: #ef4444; }
+    .status-dot.synced { background: #10b981; }
+    .status-dot.syncing { background: #f59e0b; animation: pulse 1s infinite; }
+    .status-dot.error { background: #ef4444; }
     @keyframes pulse { 50% { opacity: 0.5; } }
 
-    .tx-history {
+    .debug-card {
+      background: #0d111c;
+      color: #a3e635;
+      border-radius: 12px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 0.8em;
       max-height: 200px;
       overflow-y: auto;
-      font-size: 0.85em;
     }
-    .tx-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+    .debug-card pre { white-space: pre-wrap; word-break: break-all; }
+
+    .info-box {
+      background: linear-gradient(135deg, rgba(252,114,255,0.1), rgba(139,92,246,0.1));
+      border: 1px solid rgba(252,114,255,0.2);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+      font-size: 0.9em;
+      color: #5b21b6;
     }
-    .tx-type { color: #f7931a; }
-    .tx-amount { font-family: monospace; }
+    .info-box strong { color: #7c3aed; }
 
     .footer {
       text-align: center;
       padding: 20px;
-      color: #666;
+      color: #7780a0;
       font-size: 0.85em;
     }
-    .footer a { color: #f7931a; text-decoration: none; }
+    .footer a { color: #fc72ff; text-decoration: none; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>⚡ GitSat AMM</h1>
-    <p class="subtitle">Swap testnet4 sats ↔ GSAT tokens • Bitcoin-anchored • Git-native</p>
+    <div class="header">
+      <h1>GitSat AMM</h1>
+      <p class="subtitle">Swap testnet4 sats ↔ GSAT tokens</p>
+    </div>
 
-    <div class="status">
-      <span class="dot" id="statusDot"></span>
+    <div class="status-bar">
+      <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Connecting...</span>
+    </div>
+
+    <!-- How it works -->
+    <div class="info-box">
+      <strong>How to use:</strong> Generate a key, then deposit sats to get GSAT tokens.
+      Your balance is tracked on our ledger (did:nostr). Swaps coming soon!
     </div>
 
     <!-- Pool Stats -->
     <div class="card">
-      <h2>📊 Pool Reserves</h2>
+      <h2>Pool Reserves</h2>
       <div class="pool-stats">
         <div class="stat">
           <div class="stat-value" id="satsReserve">-</div>
-          <div class="stat-label">tBTC4 (sats)</div>
+          <div class="stat-label">sats</div>
         </div>
         <div class="stat">
           <div class="stat-value" id="tokenReserve">-</div>
@@ -233,64 +339,84 @@
       </div>
     </div>
 
-    <!-- Your Balance -->
+    <!-- Wallet -->
     <div class="card">
-      <h2>🔑 Your Wallet</h2>
-      <input type="password" class="key-input" id="privkeyInput" placeholder="Enter Nostr private key (hex)">
-      <div class="key-actions">
-        <button onclick="generateKey()">Generate Key</button>
-        <button onclick="checkBalance()">Check Balance</button>
+      <h2>Your Wallet</h2>
+      <input type="password" class="key-input" id="privkeyInput" placeholder="Enter or generate a Nostr private key (hex)">
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="generateKey()">Generate Key</button>
+        <button class="btn-secondary" onclick="loadKey()">Load Key</button>
       </div>
-      <div class="your-balance">
-        <div class="amount" id="yourGsat">0 GSAT</div>
-        <div class="label" id="yourDid">Connect wallet to see balance</div>
+      <div class="wallet-section" id="walletInfo" style="display: none;">
+        <div class="wallet-row" style="margin-bottom: 8px;">
+          <span class="wallet-label">Your DID</span>
+          <span class="wallet-value" id="yourDid">-</span>
+        </div>
+        <div class="wallet-row">
+          <span class="wallet-label">Balance</span>
+          <span class="wallet-balance" id="yourBalance">0 GSAT</span>
+        </div>
       </div>
     </div>
 
     <!-- Swap Interface -->
-    <div class="card">
-      <h2>🔄 Swap</h2>
-      <div class="tabs">
-        <div class="tab active" id="buyTab" onclick="setSwapMode('buy')">Buy GSAT</div>
-        <div class="tab" id="sellTab" onclick="setSwapMode('sell')">Sell GSAT</div>
-      </div>
-      <div class="swap-box">
-        <div class="input-group">
-          <input type="number" id="inputAmount" placeholder="0" oninput="updatePreview()">
-          <span class="token-label" id="inputLabel">sats</span>
+    <div class="swap-card">
+      <div class="input-section">
+        <div class="input-header">
+          <span>You pay</span>
+          <span id="payBalance">-</span>
         </div>
-        <div class="swap-arrow">↓</div>
-        <div class="output-preview" id="outputPreview">Enter amount to see quote</div>
-        <button id="swapBtn" onclick="executeSwap()" disabled>Connect Wallet</button>
+        <div class="input-row">
+          <input type="number" id="inputAmount" placeholder="0" oninput="updatePreview()">
+          <div class="token-badge" id="inputToken">
+            <span class="token-icon btc">₿</span>
+            <span>sats</span>
+          </div>
+        </div>
       </div>
+
+      <div class="swap-arrow-container">
+        <div class="swap-arrow" onclick="toggleSwapMode()">↓</div>
+      </div>
+
+      <div class="input-section">
+        <div class="input-header">
+          <span>You receive</span>
+          <span id="receiveBalance">-</span>
+        </div>
+        <div class="input-row">
+          <input type="text" id="outputAmount" placeholder="0" readonly>
+          <div class="token-badge" id="outputToken">
+            <span class="token-icon gsat">G</span>
+            <span>GSAT</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="swap-btn" id="swapBtn" onclick="executeSwap()" disabled>Connect Wallet</button>
     </div>
 
     <!-- Leaderboard -->
     <div class="card">
-      <h2>🏆 Leaderboard</h2>
-      <div class="leaderboard" id="leaderboard">
+      <h2>Top Holders</h2>
+      <div id="leaderboard">
         <div class="leaderboard-row">
-          <span class="rank">-</span>
           <span class="address">Loading...</span>
-          <span class="balance">-</span>
         </div>
       </div>
     </div>
 
-    <!-- Recent Transactions -->
+    <!-- Debug -->
     <div class="card">
-      <h2>📜 Recent Swaps</h2>
-      <div class="tx-history" id="txHistory">
-        <div class="tx-row">
-          <span class="tx-type">-</span>
-          <span class="tx-amount">No transactions yet</span>
-        </div>
+      <h2>Debug Info</h2>
+      <div class="debug-card">
+        <pre id="debugOutput">Loading state...</pre>
       </div>
     </div>
 
     <div class="footer">
-      Powered by <a href="https://github.com/blocktrails/blocktrails">blocktrails</a> •
-      State anchored to Bitcoin testnet4
+      <a href="https://github.com/blocktrails/blocktrails">blocktrails</a> •
+      Bitcoin testnet4 anchored
     </div>
   </div>
 
@@ -302,141 +428,139 @@
     window.blocktrails = blocktrails;
 
     const STATE_URL = 'https://solid.social/mel/public/gitmark-amm/state.json';
-    const REPO = 'https://solid.social/mel/public/gitmark-amm';
-    const BRANCH = 'main';
-    const BTC_NETWORK = 'testnet4';
+    const AMM_ADDRESS = 'tb1pfcfc3q9rjkm3xdhwjg338uacd27sls5am3a93300h2wcyye020hsxy40ve';
 
     let state = null;
     let privkey = localStorage.getItem('amm-privkey') || '';
-    let swapMode = 'buy'; // 'buy' or 'sell'
-    let trail = null;
+    let swapMode = 'buy'; // 'buy' = sats→GSAT, 'sell' = GSAT→sats
 
-    // Helpers
     function hexToBytes(hex) {
       return new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
     }
-
     function bytesToHex(bytes) {
       return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
     }
-
-    function getDid(pubkey) {
-      return `did:nostr:${pubkey}`;
-    }
-
+    function getDid(pubkey) { return `did:nostr:${pubkey}`; }
     function shortDid(did) {
-      if (!did) return '';
-      const pubkey = did.replace('did:nostr:', '');
-      return pubkey.slice(0, 8) + '...' + pubkey.slice(-4);
+      if (!did) return '-';
+      const pk = did.replace('did:nostr:', '');
+      return pk.slice(0, 6) + '...' + pk.slice(-4);
     }
+    function formatNum(n) { return n?.toLocaleString() || '0'; }
 
-    function formatNumber(n) {
-      return n.toLocaleString();
-    }
-
-    // AMM Math (constant product: x * y = k)
+    // AMM math
     function getAmountOut(amountIn, reserveIn, reserveOut) {
-      const amountInWithFee = amountIn * 997; // 0.3% fee
-      const numerator = amountInWithFee * reserveOut;
-      const denominator = reserveIn * 1000 + amountInWithFee;
-      return Math.floor(numerator / denominator);
+      const fee = amountIn * 997;
+      return Math.floor((fee * reserveOut) / (reserveIn * 1000 + fee));
     }
 
-    function getAmountIn(amountOut, reserveIn, reserveOut) {
-      const numerator = reserveIn * amountOut * 1000;
-      const denominator = (reserveOut - amountOut) * 997;
-      return Math.floor(numerator / denominator) + 1;
-    }
-
-    // State management
     async function loadState() {
       try {
-        setStatus('syncing', 'Loading state...');
+        setStatus('syncing', 'Loading...');
         const res = await fetch(STATE_URL + '?t=' + Date.now());
-        if (!res.ok) throw new Error('Failed to fetch state');
         state = await res.json();
         updateUI();
         setStatus('synced', 'Connected');
+        debug('State loaded', state);
       } catch (e) {
-        console.error('Load state error:', e);
-        setStatus('error', 'Failed to load');
+        setStatus('error', 'Failed');
+        debug('Error', e.message);
       }
     }
 
     function setStatus(type, text) {
-      document.getElementById('statusDot').className = `dot ${type}`;
+      document.getElementById('statusDot').className = `status-dot ${type}`;
       document.getElementById('statusText').textContent = text;
+    }
+
+    function debug(label, data) {
+      const el = document.getElementById('debugOutput');
+      const str = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+      el.textContent = `[${label}]\n${str}`;
     }
 
     function updateUI() {
       if (!state) return;
 
-      // Pool stats
-      document.getElementById('satsReserve').textContent = formatNumber(state.amm.satsReserve);
-      document.getElementById('tokenReserve').textContent = formatNumber(state.amm.tokenReserve);
-      const price = (state.amm.satsReserve / state.amm.tokenReserve).toFixed(4);
-      document.getElementById('price').textContent = price;
+      // Pool
+      document.getElementById('satsReserve').textContent = formatNum(state.amm.satsReserve);
+      document.getElementById('tokenReserve').textContent = formatNum(state.amm.tokenReserve);
+      document.getElementById('price').textContent = (state.amm.satsReserve / state.amm.tokenReserve).toFixed(2);
 
-      // Your balance
+      // Wallet
       if (privkey) {
         const pubkey = nostrTools.getPublicKey(privkey);
         const did = getDid(pubkey);
         const balance = state.balances[did] || 0;
-        document.getElementById('yourGsat').textContent = formatNumber(balance) + ' GSAT';
+
+        document.getElementById('walletInfo').style.display = 'block';
         document.getElementById('yourDid').textContent = shortDid(did);
+        document.getElementById('yourBalance').textContent = formatNum(balance) + ' GSAT';
         document.getElementById('swapBtn').disabled = false;
         document.getElementById('swapBtn').textContent = swapMode === 'buy' ? 'Buy GSAT' : 'Sell GSAT';
+
+        // Balance displays
+        if (swapMode === 'buy') {
+          document.getElementById('payBalance').textContent = 'Deposit sats to AMM';
+          document.getElementById('receiveBalance').textContent = `Balance: ${formatNum(balance)} GSAT`;
+        } else {
+          document.getElementById('payBalance').textContent = `Balance: ${formatNum(balance)} GSAT`;
+          document.getElementById('receiveBalance').textContent = 'Receive sats';
+        }
       }
 
       // Leaderboard
       const holders = Object.entries(state.balances)
-        .filter(([k, v]) => k !== 'amm' && v > 0)
+        .filter(([k, v]) => !k.startsWith('amm') && !k.startsWith('treasury') && v > 0)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+        .slice(0, 5);
 
-      const leaderboardEl = document.getElementById('leaderboard');
+      const lb = document.getElementById('leaderboard');
       if (holders.length === 0) {
-        leaderboardEl.innerHTML = '<div class="leaderboard-row"><span class="address">No holders yet - be the first!</span></div>';
+        lb.innerHTML = '<div class="leaderboard-row"><span class="address" style="text-align:center;width:100%">No holders yet - be the first!</span></div>';
       } else {
-        leaderboardEl.innerHTML = holders.map(([did, balance], i) => `
+        lb.innerHTML = holders.map(([did, bal], i) => `
           <div class="leaderboard-row">
-            <span class="rank">#${i + 1}</span>
+            <span class="rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i + 1}</span>
             <span class="address">${shortDid(did)}</span>
-            <span class="balance">${formatNumber(balance)} GSAT</span>
+            <span class="balance">${formatNum(bal)} GSAT</span>
           </div>
         `).join('');
       }
     }
 
-    window.setSwapMode = function(mode) {
-      swapMode = mode;
-      document.getElementById('buyTab').className = mode === 'buy' ? 'tab active' : 'tab';
-      document.getElementById('sellTab').className = mode === 'sell' ? 'tab active' : 'tab';
-      document.getElementById('inputLabel').textContent = mode === 'buy' ? 'sats' : 'GSAT';
-      document.getElementById('inputAmount').value = '';
-      document.getElementById('outputPreview').textContent = 'Enter amount to see quote';
-      if (privkey) {
-        document.getElementById('swapBtn').textContent = mode === 'buy' ? 'Buy GSAT' : 'Sell GSAT';
+    window.toggleSwapMode = function() {
+      swapMode = swapMode === 'buy' ? 'sell' : 'buy';
+      const inputToken = document.getElementById('inputToken');
+      const outputToken = document.getElementById('outputToken');
+
+      if (swapMode === 'buy') {
+        inputToken.innerHTML = '<span class="token-icon btc">₿</span><span>sats</span>';
+        outputToken.innerHTML = '<span class="token-icon gsat">G</span><span>GSAT</span>';
+      } else {
+        inputToken.innerHTML = '<span class="token-icon gsat">G</span><span>GSAT</span>';
+        outputToken.innerHTML = '<span class="token-icon btc">₿</span><span>sats</span>';
       }
+
+      document.getElementById('inputAmount').value = '';
+      document.getElementById('outputAmount').value = '';
+      updateUI();
     };
 
     window.updatePreview = function() {
       const input = parseInt(document.getElementById('inputAmount').value) || 0;
-      if (input <= 0 || !state) {
-        document.getElementById('outputPreview').textContent = 'Enter amount to see quote';
+      if (!input || !state) {
+        document.getElementById('outputAmount').value = '';
         return;
       }
 
-      let output, outputLabel;
+      let output;
       if (swapMode === 'buy') {
         output = getAmountOut(input, state.amm.satsReserve, state.amm.tokenReserve);
-        outputLabel = 'GSAT';
       } else {
         output = getAmountOut(input, state.amm.tokenReserve, state.amm.satsReserve);
-        outputLabel = 'sats';
       }
-
-      document.getElementById('outputPreview').textContent = `≈ ${formatNumber(output)} ${outputLabel}`;
+      document.getElementById('outputAmount').value = formatNum(output);
     };
 
     window.generateKey = function() {
@@ -445,16 +569,25 @@
       privkey = bytesToHex(bytes);
       document.getElementById('privkeyInput').value = privkey;
       localStorage.setItem('amm-privkey', privkey);
+
+      const pubkey = nostrTools.getPublicKey(privkey);
+      debug('Generated key', {
+        did: getDid(pubkey),
+        depositAddress: AMM_ADDRESS,
+        note: 'Send sats to deposit address to buy GSAT'
+      });
       updateUI();
     };
 
-    window.checkBalance = function() {
+    window.loadKey = function() {
       privkey = document.getElementById('privkeyInput').value.trim();
       if (privkey.length !== 64) {
-        alert('Please enter a valid 64-character hex private key');
+        alert('Enter a valid 64-char hex key');
         return;
       }
       localStorage.setItem('amm-privkey', privkey);
+      const pubkey = nostrTools.getPublicKey(privkey);
+      debug('Loaded key', { did: getDid(pubkey) });
       updateUI();
     };
 
@@ -462,35 +595,40 @@
       if (!privkey || !state) return;
 
       const input = parseInt(document.getElementById('inputAmount').value) || 0;
-      if (input <= 0) {
-        alert('Enter an amount');
-        return;
-      }
+      if (!input) { alert('Enter an amount'); return; }
 
       const pubkey = nostrTools.getPublicKey(privkey);
       const did = getDid(pubkey);
+      const balance = state.balances[did] || 0;
 
-      // For now, show what would happen (actual swap needs Bitcoin tx)
-      let output;
       if (swapMode === 'buy') {
-        output = getAmountOut(input, state.amm.satsReserve, state.amm.tokenReserve);
-        alert(`Buy: ${formatNumber(input)} sats → ${formatNumber(output)} GSAT\n\nThis would:\n1. Send ${input} sats to AMM address\n2. Credit ${output} GSAT to ${shortDid(did)}\n3. Anchor state to Bitcoin\n\n(Full implementation coming soon)`);
+        const output = getAmountOut(input, state.amm.satsReserve, state.amm.tokenReserve);
+        debug('Buy preview', {
+          action: 'BUY',
+          pay: `${input} sats`,
+          receive: `${output} GSAT`,
+          depositTo: AMM_ADDRESS,
+          yourDid: did
+        });
+        alert(`To buy ${formatNum(output)} GSAT:\n\n1. Send ${formatNum(input)} sats to:\n${AMM_ADDRESS}\n\n2. Your balance will be credited after confirmation.\n\n(Automated deposits coming soon)`);
       } else {
-        const balance = state.balances[did] || 0;
         if (input > balance) {
-          alert(`Insufficient balance. You have ${formatNumber(balance)} GSAT`);
+          alert(`Insufficient balance: ${formatNum(balance)} GSAT`);
           return;
         }
-        output = getAmountOut(input, state.amm.tokenReserve, state.amm.satsReserve);
-        alert(`Sell: ${formatNumber(input)} GSAT → ${formatNumber(output)} sats\n\nThis would:\n1. Debit ${input} GSAT from ${shortDid(did)}\n2. Send ${output} sats to your address\n3. Anchor state to Bitcoin\n\n(Full implementation coming soon)`);
+        const output = getAmountOut(input, state.amm.tokenReserve, state.amm.satsReserve);
+        debug('Sell preview', {
+          action: 'SELL',
+          pay: `${input} GSAT`,
+          receive: `${output} sats`,
+          yourDid: did
+        });
+        alert(`Sell ${formatNum(input)} GSAT for ${formatNum(output)} sats\n\n(Withdrawals coming soon)`);
       }
     };
 
     // Init
     document.getElementById('privkeyInput').value = privkey;
-    if (privkey) {
-      updateUI();
-    }
     loadState();
   </script>
 </body>
