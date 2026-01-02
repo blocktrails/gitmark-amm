@@ -494,8 +494,13 @@
     window.nostrTools = nostrTools;
     window.blocktrails = blocktrails;
 
-    const STATE_URL = 'https://api.solid.social/state';
-    const SELL_API = 'https://api.solid.social/sell'; // Local sell API (run: node src/sell-api.js)
+    // Auto-detect API base URL
+    const API_BASE = location.hostname === 'localhost'
+      ? 'http://localhost:3456'
+      : 'https://api.solid.social';
+
+    const STATE_URL = `${API_BASE}/state`;
+    const SELL_API = `${API_BASE}/sell`;
     const AMM_PUBKEY = '034e138880a395b71336ee922313f3b86abd0fc29ddc7a58c5efba9d82132f53ef';
     const AMM_ADDRESS = 'tb1pfcfc3q9rjkm3xdhwjg338uacd27sls5am3a93300h2wcyye020hsxy40ve';
 
@@ -787,7 +792,7 @@
       btn.textContent = 'Checking...';
 
       try {
-        const res = await fetch('https://api.solid.social/check', { method: 'POST' });
+        const res = await fetch(`${API_BASE}/check`, { method: 'POST' });
         const data = await res.json();
 
         if (res.status === 429) {
