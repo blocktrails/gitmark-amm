@@ -790,15 +790,15 @@
           timestamp: Date.now()
         };
 
-        // Sign with nostr key
+        // Sign with nostr key (using noble schnorr)
         const message = JSON.stringify(sellRequest);
-        const messageHash = bytesToHex(sha256(new TextEncoder().encode(message)));
-        const signature = await nostrTools.schnorr.sign(messageHash, privkey);
+        const messageHash = sha256(new TextEncoder().encode(message));
+        const signature = secp256k1.schnorr.sign(messageHash, privkey);
 
         const signedRequest = {
           ...sellRequest,
           pubkey: pubkey,
-          signature: bytesToHex(signature)
+          signature: bytesToHex(new Uint8Array(signature))
         };
 
         debug('Sell Request (signed)', signedRequest);
