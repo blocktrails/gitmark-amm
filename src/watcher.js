@@ -38,6 +38,13 @@ async function loadState() {
   try {
     const data = await fs.readFile(CONFIG.stateFile, 'utf-8');
     state = JSON.parse(data);
+
+    // Load processed txids from state (prevents duplicate processing on restart)
+    if (state.processedTxids && Array.isArray(state.processedTxids)) {
+      processedTxids = new Set(state.processedTxids);
+      console.log('[State] Loaded', processedTxids.size, 'processed txids');
+    }
+
     console.log('[State] Loaded:', {
       satsReserve: state.amm.satsReserve,
       tokenReserve: state.amm.tokenReserve,
@@ -50,6 +57,9 @@ async function loadState() {
 }
 
 async function saveState() {
+  // Persist processedTxids to state (prevents duplicate processing on restart)
+  state.processedTxids = Array.from(processedTxids);
+
   await fs.writeFile(CONFIG.stateFile, JSON.stringify(state, null, 2));
   console.log('[State] Saved locally');
 
