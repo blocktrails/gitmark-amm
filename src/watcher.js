@@ -4,7 +4,7 @@
  * Monitors deposit addresses for incoming sats and credits user balances.
  */
 
-import { deriveDepositAddress, deriveDepositPrivkey } from './deposit.js';
+import { deriveDepositAddress, deriveDepositPrivkey, encodeBech32m } from './deposit.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
@@ -83,7 +83,11 @@ async function anchorState() {
 
     // Get AMM wallet for anchoring
     const wallet = new bt.Blocktrail(CONFIG.ammPrivkey);
-    const address = bt.pubkeyToAddress(wallet.pubkeyBase, CONFIG.network);
+    const xonly = bt.p2trXonly(wallet.pubkeyBase);
+    // Derive address from xonly pubkey (P2TR)
+    const address = CONFIG.network === 'btc'
+      ? encodeBech32m('bc', 1, xonly)
+      : encodeBech32m('tb', 1, xonly);
 
     // Get UTXOs
     const utxos = await bt.getUtxos(address, CONFIG.network);
@@ -105,10 +109,7 @@ async function anchorState() {
       return;
     }
 
-    // Build tx with OP_RETURN containing state hash
-    const xonly = bt.p2trXonly(wallet.pubkeyBase);
-    const opReturnData = new TextEncoder().encode('GSAT:' + stateHash.slice(0, 40));
-
+    // Build simple anchor tx (state hash stored in state.json, txid proves timestamp)
     const tx = bt.buildTransaction({
       inputs: utxos.map(u => ({
         txid: u.txid,
@@ -117,8 +118,7 @@ async function anchorState() {
         witnessProgram: xonly
       })),
       outputs: [
-        { witnessProgram: xonly, value: change },
-        { opReturn: opReturnData }
+        { witnessProgram: xonly, value: change }
       ]
     });
 
@@ -360,12 +360,124 @@ function calculateSatsOut(gsatIn) {
   return Number((fee * BigInt(satsReserve)) / (BigInt(tokenReserve) * 1000n + fee));
 }
 
-// Start HTTP server for sell API
+// === TRANSFER API ===
+
+// Verify transfer request signature
+function verifyTransferSignature(request) {
+  const { action, from, to, amount, timestamp, pubkey, signature } = request;
+
+  const transferRequest = { action, from, to, amount, timestamp };
+  const message = JSON.stringify(transferRequest);
+  const messageHash = sha256(new TextEncoder().encode(message));
+
+  if (from !== `did:nostr:${pubkey}`) {
+    return { valid: false, error: 'Sender DID does not match pubkey' };
+  }
+
+  try {
+    const valid = schnorr.verify(hexToBytes(signature), messageHash, hexToBytes(pubkey));
+    return { valid, error: valid ? null : 'Invalid signature' };
+  } catch (e) {
+    return { valid: false, error: e.message };
+  }
+}
+
+// Process transfer request
+async function processTransfer(request) {
+  const { from, to, amount } = request;
+
+  // Validate recipient DID format
+  if (!to.startsWith('did:nostr:') || to.length !== 75) {
+    return { success: false, error: 'Invalid recipient DID format' };
+  }
+
+  const fromBalance = state.balances[from] || 0;
+  if (amount > fromBalance) {
+    return { success: false, error: `Insufficient balance: ${fromBalance} GSAT` };
+  }
+
+  if (amount <= 0) {
+    return { success: false, error: 'Amount must be positive' };
+  }
+
+  // Update balances
+  state.balances[from] = fromBalance - amount;
+  state.balances[to] = (state.balances[to] || 0) + amount;
+  state.txCount = (state.txCount || 0) + 1;
+
+  await saveState();
+
+  console.log('[Transfer]', from.slice(0, 20) + '...', '→', to.slice(0, 20) + '...', amount, 'GSAT');
+
+  return {
+    success: true,
+    from,
+    to,
+    amount,
+    newFromBalance: state.balances[from],
+    newToBalance: state.balances[to]
+  };
+}
+
+// === HTTP 402 MIDDLEWARE ===
+
+// Verify 402 payment header and deduct tokens
+function verify402Payment(req, cost) {
+  const did = req.headers['x-did'];
+  const timestamp = req.headers['x-timestamp'];
+  const signature = req.headers['x-signature'];
+
+  if (!did || !timestamp || !signature) {
+    return { authorized: false, error: 'Missing payment headers (X-DID, X-Timestamp, X-Signature)' };
+  }
+
+  // Verify signature
+  const pubkey = did.replace('did:nostr:', '');
+  const message = `${req.method}:${req.url}:${timestamp}`;
+  const messageHash = sha256(new TextEncoder().encode(message));
+
+  try {
+    const valid = schnorr.verify(hexToBytes(signature), messageHash, hexToBytes(pubkey));
+    if (!valid) {
+      return { authorized: false, error: 'Invalid signature' };
+    }
+  } catch (e) {
+    return { authorized: false, error: 'Signature verification failed: ' + e.message };
+  }
+
+  // Check timestamp (within 5 minutes)
+  const ts = parseInt(timestamp);
+  if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) {
+    return { authorized: false, error: 'Timestamp expired' };
+  }
+
+  // Check balance
+  const balance = state.balances[did] || 0;
+  if (balance < cost) {
+    return {
+      authorized: false,
+      error: 'Insufficient balance',
+      balance,
+      cost,
+      depositAddress: deriveDepositAddress(CONFIG.ammPubkey, did, CONFIG.network).address
+    };
+  }
+
+  // Deduct tokens
+  state.balances[did] = balance - cost;
+  state.txCount = (state.txCount || 0) + 1;
+
+  console.log('[402]', did.slice(0, 20) + '...', 'paid', cost, 'GSAT for', req.url);
+
+  return { authorized: true, did, remaining: state.balances[did] };
+}
+
+// Start HTTP server for AMM API
 function startApiServer() {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-DID, X-Timestamp, X-Signature');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(200);
@@ -373,37 +485,116 @@ function startApiServer() {
       return;
     }
 
-    if (req.method === 'POST' && req.url === '/sell') {
+    // Helper to read JSON body
+    const readBody = () => new Promise((resolve, reject) => {
       let body = '';
       req.on('data', chunk => body += chunk);
-      req.on('end', async () => {
-        try {
-          const request = JSON.parse(body);
-
-          const verification = verifySignature(request);
-          if (!verification.valid) {
-            res.writeHead(401, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: verification.error }));
-            return;
-          }
-
-          const result = await processSell(request);
-
-          res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(result.success ? result : { error: result.error }));
-        } catch (e) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message }));
-        }
+      req.on('end', () => {
+        try { resolve(JSON.parse(body)); }
+        catch (e) { reject(e); }
       });
-    } else {
-      res.writeHead(404);
-      res.end('Not found');
+    });
+
+    try {
+      // POST /sell - Sell GSAT for sats
+      if (req.method === 'POST' && req.url === '/sell') {
+        const request = await readBody();
+        const verification = verifySignature(request);
+        if (!verification.valid) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: verification.error }));
+          return;
+        }
+        const result = await processSell(request);
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result.success ? result : { error: result.error }));
+        return;
+      }
+
+      // POST /transfer - Transfer GSAT to another user
+      if (req.method === 'POST' && req.url === '/transfer') {
+        const request = await readBody();
+        const verification = verifyTransferSignature(request);
+        if (!verification.valid) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: verification.error }));
+          return;
+        }
+        const result = await processTransfer(request);
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result.success ? result : { error: result.error }));
+        return;
+      }
+
+      // GET /balance/:did - Check balance (free)
+      if (req.method === 'GET' && req.url.startsWith('/balance/')) {
+        const did = decodeURIComponent(req.url.slice(9));
+        const gsatBalance = state.balances[did] || 0;
+        const satsBalance = state.satsBalances?.[did] || 0;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ did, gsat: gsatBalance, sats: satsBalance }));
+        return;
+      }
+
+      // GET /api/quote - Demo 402 endpoint (costs 1 GSAT)
+      if (req.method === 'GET' && req.url === '/api/quote') {
+        const cost = 1; // 1 GSAT per request
+        const payment = verify402Payment(req, cost);
+
+        if (!payment.authorized) {
+          res.writeHead(402, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: payment.error,
+            cost,
+            balance: payment.balance,
+            depositAddress: payment.depositAddress
+          }));
+          return;
+        }
+
+        // Save state after deducting payment
+        await saveState();
+
+        // Return the "paid" content
+        const price = (state.amm.satsReserve / state.amm.tokenReserve).toFixed(4);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          quote: `1 GSAT = ${price} sats`,
+          pool: { sats: state.amm.satsReserve, gsat: state.amm.tokenReserve },
+          paid: cost,
+          remaining: payment.remaining
+        }));
+        return;
+      }
+
+      // GET /state - Public state info
+      if (req.method === 'GET' && req.url === '/state') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          pool: state.amm,
+          txCount: state.txCount,
+          anchors: state.anchors?.slice(-3) || []
+        }));
+        return;
+      }
+
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
     }
   });
 
   server.listen(CONFIG.apiPort, () => {
-    console.log('[API] Sell endpoint: http://localhost:' + CONFIG.apiPort + '/sell');
+    console.log('[API] Endpoints:');
+    console.log('  POST /sell      - Sell GSAT for sats');
+    console.log('  POST /transfer  - Transfer GSAT to user');
+    console.log('  GET  /balance/* - Check balance');
+    console.log('  GET  /api/quote - Demo 402 endpoint (1 GSAT)');
+    console.log('  GET  /state     - Pool state');
+    console.log('  http://localhost:' + CONFIG.apiPort);
   });
 }
 
