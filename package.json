@@ -1,6 +1,6 @@
 {
   "name": "gitmark-amm",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A git-native Automated Market Maker (AMM) for swapping testnet4 sats ↔ GSAT tokens.",
   "main": "index.js",
   "scripts": {
