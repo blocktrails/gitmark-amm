@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transfer GSAT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f6fc;
+      color: #0d111c;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 480px; margin: 0 auto; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 8px;
+      color: #0d111c;
+    }
+    .subtitle { color: #7780a0; font-size: 0.95em; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 20px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+    .card h2 {
+      margin-bottom: 12px;
+      color: #7780a0;
+      font-size: 0.85em;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .input-section {
+      background: #f5f6fc;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .input-label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.85em;
+      color: #7780a0;
+    }
+    .input-field {
+      width: 100%;
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 1em;
+      outline: none;
+    }
+    .input-field:focus {
+      border-color: #8b5cf6;
+    }
+    .input-field.large {
+      font-size: 1.5em;
+      font-weight: 600;
+      text-align: right;
+    }
+
+    .balance-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #e8ecfb;
+    }
+    .balance-row:last-child { border-bottom: none; }
+    .balance-label { color: #7780a0; }
+    .balance-value { font-weight: 600; }
+
+    .btn {
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border: none;
+      border-radius: 16px;
+      padding: 16px 24px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .result {
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+      display: none;
+    }
+    .result.error {
+      background: #fef2f2;
+      border-color: #fca5a5;
+    }
+    .result.show { display: block; }
+
+    .nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .nav a {
+      padding: 8px 16px;
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0d111c;
+      font-size: 0.9em;
+    }
+    .nav a.active {
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border-color: transparent;
+    }
+
+    .quick-amounts {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .quick-btn {
+      flex: 1;
+      padding: 8px;
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .quick-btn:hover {
+      border-color: #8b5cf6;
+    }
+
+    .history {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .history-item {
+      padding: 12px;
+      background: #f5f6fc;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 0.9em;
+    }
+    .history-item .amount {
+      font-weight: 600;
+      color: #8b5cf6;
+    }
+    .history-item .to {
+      color: #7780a0;
+      font-size: 0.85em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <a href="demo.html">AMM</a>
+      <a href="paywall.html">Paywall</a>
+      <a href="transfer.html" class="active">Transfer</a>
+      <a href="debug.html">Debug</a>
+    </nav>
+
+    <div class="header">
+      <h1>Transfer GSAT</h1>
+      <p class="subtitle">Send tokens to another user</p>
+    </div>
+
+    <div class="card">
+      <h2>Your Balance</h2>
+      <div class="balance-row">
+        <span class="balance-label">DID</span>
+        <span class="balance-value" id="userDid">Loading...</span>
+      </div>
+      <div class="balance-row">
+        <span class="balance-label">GSAT</span>
+        <span class="balance-value" id="gsatBalance">--</span>
+      </div>
+      <div class="balance-row">
+        <span class="balance-label">Sats (pending)</span>
+        <span class="balance-value" id="satsBalance">--</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Send To</h2>
+      <div class="input-section">
+        <label class="input-label">Recipient DID (did:nostr:...)</label>
+        <input type="text" class="input-field" id="recipientDid" placeholder="did:nostr:...">
+      </div>
+      <div class="input-section">
+        <label class="input-label">Amount (GSAT)</label>
+        <input type="number" class="input-field large" id="amount" placeholder="0" min="1">
+        <div class="quick-amounts">
+          <button class="quick-btn" onclick="setAmount(10)">10</button>
+          <button class="quick-btn" onclick="setAmount(100)">100</button>
+          <button class="quick-btn" onclick="setAmount(1000)">1K</button>
+          <button class="quick-btn" onclick="setMax()">MAX</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn" id="sendBtn" onclick="sendTransfer()">
+      Send GSAT
+    </button>
+
+    <div class="result" id="result"></div>
+
+    <div class="card" style="margin-top: 16px;">
+      <h2>Recent Transfers</h2>
+      <div class="history" id="history">
+        <div style="color: #7780a0; text-align: center; padding: 20px;">
+          No transfers yet
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { sha256 } from 'https://esm.sh/@noble/hashes@1.6.1/sha256';
+    import { schnorr } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
+    import { bytesToHex, hexToBytes } from 'https://esm.sh/@noble/hashes@1.6.1/utils';
+
+    const API_BASE = 'http://localhost:3456';
+    let userBalance = 0;
+
+    // Load or generate key
+    let privkey = localStorage.getItem('amm-privkey');
+    if (!privkey) {
+      const randomBytes = new Uint8Array(32);
+      crypto.getRandomValues(randomBytes);
+      privkey = bytesToHex(randomBytes);
+      localStorage.setItem('amm-privkey', privkey);
+    }
+
+    // Get pubkey from privkey
+    const pubkey = bytesToHex(schnorr.getPublicKey(hexToBytes(privkey)));
+    const did = `did:nostr:${pubkey}`;
+
+    // Display user info
+    document.getElementById('userDid').textContent = did.slice(0, 16) + '...' + did.slice(-8);
+
+    // Fetch balance
+    async function updateBalance() {
+      try {
+        const res = await fetch(`${API_BASE}/balance/${encodeURIComponent(did)}`);
+        const data = await res.json();
+        userBalance = data.gsat;
+        document.getElementById('gsatBalance').textContent = data.gsat.toLocaleString();
+        document.getElementById('satsBalance').textContent = data.sats.toLocaleString();
+      } catch (e) {
+        document.getElementById('gsatBalance').textContent = 'Error';
+      }
+    }
+    updateBalance();
+
+    // Quick amount buttons
+    window.setAmount = function(amount) {
+      document.getElementById('amount').value = amount;
+    };
+
+    window.setMax = function() {
+      document.getElementById('amount').value = userBalance;
+    };
+
+    // Load transfer history
+    function loadHistory() {
+      const history = JSON.parse(localStorage.getItem('transfer-history') || '[]');
+      const container = document.getElementById('history');
+
+      if (history.length === 0) {
+        container.innerHTML = '<div style="color: #7780a0; text-align: center; padding: 20px;">No transfers yet</div>';
+        return;
+      }
+
+      container.innerHTML = history.slice(-10).reverse().map(tx => `
+        <div class="history-item">
+          <span class="amount">${tx.amount} GSAT</span> sent<br>
+          <span class="to">To: ${tx.to.slice(0, 20)}...${tx.to.slice(-8)}</span>
+        </div>
+      `).join('');
+    }
+    loadHistory();
+
+    // Send transfer
+    window.sendTransfer = async function() {
+      const btn = document.getElementById('sendBtn');
+      const result = document.getElementById('result');
+      const recipientDid = document.getElementById('recipientDid').value.trim();
+      const amount = parseInt(document.getElementById('amount').value);
+
+      // Validate
+      if (!recipientDid.startsWith('did:nostr:') || recipientDid.length !== 75) {
+        result.className = 'result error show';
+        result.innerHTML = '<strong>Error:</strong> Invalid recipient DID format';
+        return;
+      }
+
+      if (!amount || amount <= 0) {
+        result.className = 'result error show';
+        result.innerHTML = '<strong>Error:</strong> Please enter a valid amount';
+        return;
+      }
+
+      if (amount > userBalance) {
+        result.className = 'result error show';
+        result.innerHTML = `<strong>Error:</strong> Insufficient balance (${userBalance} GSAT)`;
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        // Build transfer request
+        const request = {
+          action: 'transfer',
+          from: did,
+          to: recipientDid,
+          amount: amount,
+          timestamp: Date.now()
+        };
+
+        // Sign request
+        const message = JSON.stringify(request);
+        const messageHash = sha256(new TextEncoder().encode(message));
+        const signature = schnorr.sign(messageHash, hexToBytes(privkey));
+
+        // Add signature to request
+        request.pubkey = pubkey;
+        request.signature = bytesToHex(signature);
+
+        // Send request
+        const res = await fetch(`${API_BASE}/transfer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request)
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          result.className = 'result show';
+          result.innerHTML = `
+            <strong>Transfer Successful!</strong><br><br>
+            Sent: ${data.amount} GSAT<br>
+            To: ${data.to.slice(0, 24)}...<br>
+            New Balance: ${data.newFromBalance} GSAT
+          `;
+
+          // Save to history
+          const history = JSON.parse(localStorage.getItem('transfer-history') || '[]');
+          history.push({ to: recipientDid, amount, timestamp: Date.now() });
+          localStorage.setItem('transfer-history', JSON.stringify(history.slice(-50)));
+          loadHistory();
+
+          // Clear form
+          document.getElementById('recipientDid').value = '';
+          document.getElementById('amount').value = '';
+
+          updateBalance();
+        } else {
+          throw new Error(data.error || 'Transfer failed');
+        }
+      } catch (e) {
+        result.className = 'result error show';
+        result.innerHTML = `<strong>Error:</strong> ${e.message}`;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Send GSAT';
+    };
+  </script>
+</body>
+</html>

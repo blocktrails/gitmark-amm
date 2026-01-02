@@ -318,10 +318,37 @@
       font-size: 0.85em;
     }
     .footer a { color: #fc72ff; text-decoration: none; }
+
+    .nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .nav a {
+      padding: 8px 16px;
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0d111c;
+      font-size: 0.9em;
+    }
+    .nav a.active {
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border-color: transparent;
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <nav class="nav">
+      <a href="demo.html" class="active">AMM</a>
+      <a href="paywall.html">Paywall</a>
+      <a href="transfer.html">Transfer</a>
+      <a href="debug.html">Debug</a>
+    </nav>
+
     <div class="header">
       <h1>GitSat AMM</h1>
       <p class="subtitle">Swap testnet4 sats ↔ GSAT tokens</p>

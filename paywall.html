@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paywall Demo - NIP-98</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f6fc;
+      color: #0d111c;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 520px; margin: 0 auto; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 8px;
+      color: #0d111c;
+    }
+    .subtitle { color: #7780a0; font-size: 0.95em; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+    .card h2 {
+      margin-bottom: 12px;
+      color: #7780a0;
+      font-size: 0.85em;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border: none;
+      border-radius: 16px;
+      padding: 16px 24px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #e8ecfb;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #7780a0; }
+    .info-value { font-weight: 600; }
+
+    .result {
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+      display: none;
+    }
+    .result.error {
+      background: #fef2f2;
+      border-color: #fca5a5;
+    }
+    .result.show { display: block; }
+
+    .code {
+      background: #1e1e2e;
+      color: #a6e3a1;
+      border-radius: 12px;
+      padding: 16px;
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 0.85em;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .steps {
+      counter-reset: step;
+    }
+    .step {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .step-num {
+      counter-increment: step;
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 0.9em;
+      flex-shrink: 0;
+    }
+    .step-num::before { content: counter(step); }
+    .step-content { flex: 1; }
+    .step-title { font-weight: 600; margin-bottom: 4px; }
+    .step-desc { color: #7780a0; font-size: 0.9em; }
+
+    .nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .nav a {
+      padding: 8px 16px;
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0d111c;
+      font-size: 0.9em;
+    }
+    .nav a.active {
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border-color: transparent;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <a href="demo.html">AMM</a>
+      <a href="paywall.html" class="active">Paywall</a>
+      <a href="transfer.html">Transfer</a>
+      <a href="debug.html">Debug</a>
+    </nav>
+
+    <div class="header">
+      <h1>HTTP 402 Paywall</h1>
+      <p class="subtitle">NIP-98 authenticated API demo</p>
+    </div>
+
+    <div class="card">
+      <h2>Your Account</h2>
+      <div class="info-row">
+        <span class="info-label">DID</span>
+        <span class="info-value" id="userDid">Not loaded</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Balance</span>
+        <span class="info-value" id="userBalance">-- GSAT</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>How NIP-98 Works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-content">
+            <div class="step-title">Create Event</div>
+            <div class="step-desc">Build a kind 27235 Nostr event with URL and method tags</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-content">
+            <div class="step-title">Sign Event</div>
+            <div class="step-desc">Sign the event with your Nostr private key (schnorr)</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-content">
+            <div class="step-title">Send Request</div>
+            <div class="step-desc">Base64 encode the event and send in Authorization header</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-content">
+            <div class="step-title">Pay & Access</div>
+            <div class="step-desc">Server deducts GSAT tokens and returns the content</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>API Endpoint</h2>
+      <div class="info-row">
+        <span class="info-label">URL</span>
+        <span class="info-value">GET /api/quote</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Cost</span>
+        <span class="info-value">1 GSAT</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Returns</span>
+        <span class="info-value">Current GSAT price</span>
+      </div>
+    </div>
+
+    <button class="btn" id="payBtn" onclick="makePaywallRequest()">
+      Pay 1 GSAT & Get Quote
+    </button>
+
+    <div class="result" id="result"></div>
+
+    <div class="card" style="margin-top: 16px;">
+      <h2>NIP-98 Event (Debug)</h2>
+      <div class="code" id="eventDebug">Click button to see the signed event...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { sha256 } from 'https://esm.sh/@noble/hashes@1.6.1/sha256';
+    import { schnorr } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
+    import { bytesToHex, hexToBytes } from 'https://esm.sh/@noble/hashes@1.6.1/utils';
+
+    const API_BASE = 'http://localhost:3456';
+
+    // Load or generate key
+    let privkey = localStorage.getItem('amm-privkey');
+    if (!privkey) {
+      const randomBytes = new Uint8Array(32);
+      crypto.getRandomValues(randomBytes);
+      privkey = bytesToHex(randomBytes);
+      localStorage.setItem('amm-privkey', privkey);
+    }
+
+    // Get pubkey from privkey
+    const pubkey = bytesToHex(schnorr.getPublicKey(hexToBytes(privkey)));
+    const did = `did:nostr:${pubkey}`;
+
+    // Display user info
+    document.getElementById('userDid').textContent = did.slice(0, 20) + '...' + did.slice(-8);
+
+    // Fetch balance
+    async function updateBalance() {
+      try {
+        const res = await fetch(`${API_BASE}/balance/${encodeURIComponent(did)}`);
+        const data = await res.json();
+        document.getElementById('userBalance').textContent = `${data.gsat} GSAT`;
+      } catch (e) {
+        document.getElementById('userBalance').textContent = 'Error loading';
+      }
+    }
+    updateBalance();
+
+    // Create NIP-98 event
+    function createNip98Event(method, url) {
+      const event = {
+        kind: 27235,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['u', url],
+          ['method', method]
+        ],
+        content: '',
+        pubkey: pubkey
+      };
+
+      // Compute event ID
+      const serialized = JSON.stringify([
+        0,
+        event.pubkey,
+        event.created_at,
+        event.kind,
+        event.tags,
+        event.content
+      ]);
+      const hash = sha256(new TextEncoder().encode(serialized));
+      event.id = bytesToHex(hash);
+
+      // Sign event
+      const sig = schnorr.sign(hash, hexToBytes(privkey));
+      event.sig = bytesToHex(sig);
+
+      return event;
+    }
+
+    // Make paywall request
+    window.makePaywallRequest = async function() {
+      const btn = document.getElementById('payBtn');
+      const result = document.getElementById('result');
+      const debug = document.getElementById('eventDebug');
+
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+
+      try {
+        const url = `${API_BASE}/api/quote`;
+        const event = createNip98Event('GET', url);
+
+        // Show debug info
+        debug.textContent = JSON.stringify(event, null, 2);
+
+        // Base64 encode the event
+        const base64Event = btoa(JSON.stringify(event));
+
+        // Make request with NIP-98 auth
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Nostr ${base64Event}`
+          }
+        });
+
+        const data = await res.json();
+
+        if (res.status === 402) {
+          result.className = 'result error show';
+          result.innerHTML = `
+            <strong>Payment Required (402)</strong><br><br>
+            ${data.error}<br><br>
+            Cost: ${data.cost} GSAT<br>
+            Your Balance: ${data.balance || 0} GSAT
+          `;
+        } else if (res.ok) {
+          result.className = 'result show';
+          result.innerHTML = `
+            <strong>Success!</strong><br><br>
+            ${data.quote}<br><br>
+            Pool: ${data.pool.sats.toLocaleString()} sats / ${data.pool.gsat.toLocaleString()} GSAT<br>
+            Paid: ${data.paid} GSAT<br>
+            Remaining: ${data.remaining} GSAT
+          `;
+          updateBalance();
+        } else {
+          throw new Error(data.error || 'Unknown error');
+        }
+      } catch (e) {
+        result.className = 'result error show';
+        result.innerHTML = `<strong>Error:</strong> ${e.message}`;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Pay 1 GSAT & Get Quote';
+    };
+  </script>
+</body>
+</html>

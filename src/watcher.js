@@ -419,37 +419,219 @@ async function processTransfer(request) {
   };
 }
 
-// === HTTP 402 MIDDLEWARE ===
+// === WITHDRAWAL API ===
 
-// Verify 402 payment header and deduct tokens
-function verify402Payment(req, cost) {
-  const did = req.headers['x-did'];
-  const timestamp = req.headers['x-timestamp'];
-  const signature = req.headers['x-signature'];
+// Verify withdrawal request signature
+function verifyWithdrawSignature(request) {
+  const { action, did, amount, address, timestamp, pubkey, signature } = request;
 
-  if (!did || !timestamp || !signature) {
-    return { authorized: false, error: 'Missing payment headers (X-DID, X-Timestamp, X-Signature)' };
-  }
-
-  // Verify signature
-  const pubkey = did.replace('did:nostr:', '');
-  const message = `${req.method}:${req.url}:${timestamp}`;
+  const withdrawRequest = { action, did, amount, address, timestamp };
+  const message = JSON.stringify(withdrawRequest);
   const messageHash = sha256(new TextEncoder().encode(message));
+
+  if (did !== `did:nostr:${pubkey}`) {
+    return { valid: false, error: 'DID does not match pubkey' };
+  }
 
   try {
     const valid = schnorr.verify(hexToBytes(signature), messageHash, hexToBytes(pubkey));
-    if (!valid) {
-      return { authorized: false, error: 'Invalid signature' };
-    }
+    return { valid, error: valid ? null : 'Invalid signature' };
   } catch (e) {
-    return { authorized: false, error: 'Signature verification failed: ' + e.message };
+    return { valid: false, error: e.message };
+  }
+}
+
+// Process withdrawal - send sats to user's Bitcoin address
+async function processWithdraw(request) {
+  const { did, amount, address } = request;
+
+  // Validate amount
+  if (!amount || amount <= 0) {
+    return { success: false, error: 'Invalid amount' };
   }
 
-  // Check timestamp (within 5 minutes)
-  const ts = parseInt(timestamp);
-  if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) {
-    return { authorized: false, error: 'Timestamp expired' };
+  // Check sats balance
+  const satsBalance = state.satsBalances?.[did] || 0;
+  if (amount > satsBalance) {
+    return { success: false, error: `Insufficient sats balance: ${satsBalance}` };
   }
+
+  // Validate Bitcoin address (basic check for testnet4)
+  if (!address.startsWith('tb1') && !address.startsWith('m') && !address.startsWith('n') && !address.startsWith('2')) {
+    return { success: false, error: 'Invalid testnet address' };
+  }
+
+  // Minimum withdrawal (to cover fees)
+  const minWithdraw = 1000;
+  if (amount < minWithdraw) {
+    return { success: false, error: `Minimum withdrawal is ${minWithdraw} sats` };
+  }
+
+  try {
+    // Get AMM wallet
+    const wallet = new bt.Blocktrail(CONFIG.ammPrivkey);
+    const xonly = bt.p2trXonly(wallet.pubkeyBase);
+    const ammAddress = CONFIG.network === 'btc'
+      ? encodeBech32m('bc', 1, xonly)
+      : encodeBech32m('tb', 1, xonly);
+
+    // Get UTXOs
+    const utxos = await bt.getUtxos(ammAddress, CONFIG.network);
+    if (utxos.length === 0) {
+      return { success: false, error: 'AMM has no UTXOs available' };
+    }
+
+    const total = utxos.reduce((sum, u) => sum + u.amount, 0);
+    const feeRates = await bt.getFeeRates(CONFIG.network);
+    const feeRate = feeRates.halfHour || 2;
+    const vsize = bt.estimateVsize(utxos.length, 2);
+    const fee = Math.ceil(vsize * feeRate);
+
+    if (amount + fee > total) {
+      return { success: false, error: 'Insufficient AMM funds for withdrawal + fees' };
+    }
+
+    const change = total - amount - fee;
+
+    // Build withdrawal transaction
+    const tx = bt.buildTransaction({
+      inputs: utxos.map(u => ({
+        txid: u.txid,
+        vout: u.vout,
+        amount: u.amount,
+        witnessProgram: xonly
+      })),
+      outputs: [
+        { address, value: amount },
+        ...(change >= 546 ? [{ witnessProgram: xonly, value: change }] : [])
+      ]
+    });
+
+    // Sign and broadcast
+    const signingKey = bt.hexToBytes(CONFIG.ammPrivkey);
+    const prevouts = utxos.map(u => ({ ...u, witnessProgram: xonly }));
+    const signedTx = bt.signTransaction(tx, utxos.map(() => signingKey), prevouts);
+
+    const txBytes = bt.serializeTransaction(signedTx);
+    const txHex = bt.bytesToHex(txBytes);
+    const txid = bt.computeTxid(signedTx);
+
+    await bt.broadcast(txHex, CONFIG.network);
+
+    // Deduct from balance
+    state.satsBalances[did] = satsBalance - amount;
+    state.txCount = (state.txCount || 0) + 1;
+
+    // Record withdrawal
+    state.withdrawals = state.withdrawals || [];
+    state.withdrawals.push({
+      did,
+      amount,
+      address,
+      txid,
+      fee,
+      timestamp: new Date().toISOString()
+    });
+
+    await saveState();
+
+    console.log('[Withdraw]', did.slice(0, 20) + '...', amount, 'sats →', address.slice(0, 16) + '...');
+
+    return {
+      success: true,
+      txid,
+      amount,
+      fee,
+      address,
+      newBalance: state.satsBalances[did]
+    };
+  } catch (e) {
+    console.error('[Withdraw] Error:', e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// === HTTP 402 MIDDLEWARE (NIP-98) ===
+
+// Verify NIP-98 event signature
+function verifyNostrEvent(event) {
+  // Serialize event for signing: [0, pubkey, created_at, kind, tags, content]
+  const serialized = JSON.stringify([
+    0,
+    event.pubkey,
+    event.created_at,
+    event.kind,
+    event.tags,
+    event.content
+  ]);
+  const hash = sha256(new TextEncoder().encode(serialized));
+  const expectedId = bytesToHex(hash);
+
+  if (event.id !== expectedId) {
+    return { valid: false, error: 'Event ID mismatch' };
+  }
+
+  try {
+    const valid = schnorr.verify(hexToBytes(event.sig), hash, hexToBytes(event.pubkey));
+    return { valid, error: valid ? null : 'Invalid signature' };
+  } catch (e) {
+    return { valid: false, error: e.message };
+  }
+}
+
+// Parse NIP-98 Authorization header and verify
+function verify402Payment(req, cost, fullUrl) {
+  const authHeader = req.headers['authorization'];
+
+  if (!authHeader || !authHeader.startsWith('Nostr ')) {
+    return { authorized: false, error: 'Missing NIP-98 Authorization header' };
+  }
+
+  // Decode base64 event
+  let event;
+  try {
+    const base64 = authHeader.slice(6); // Remove "Nostr " prefix
+    const json = Buffer.from(base64, 'base64').toString('utf-8');
+    event = JSON.parse(json);
+  } catch (e) {
+    return { authorized: false, error: 'Invalid NIP-98 event encoding' };
+  }
+
+  // Verify event kind
+  if (event.kind !== 27235) {
+    return { authorized: false, error: 'Invalid event kind (expected 27235)' };
+  }
+
+  // Verify timestamp (within 60 seconds per NIP-98)
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - event.created_at) > 60) {
+    return { authorized: false, error: 'Event timestamp expired (>60s)' };
+  }
+
+  // Extract and verify tags
+  const uTag = event.tags.find(t => t[0] === 'u');
+  const methodTag = event.tags.find(t => t[0] === 'method');
+
+  if (!uTag || !methodTag) {
+    return { authorized: false, error: 'Missing required tags (u, method)' };
+  }
+
+  if (uTag[1] !== fullUrl) {
+    return { authorized: false, error: `URL mismatch: ${uTag[1]} vs ${fullUrl}` };
+  }
+
+  if (methodTag[1] !== req.method) {
+    return { authorized: false, error: `Method mismatch: ${methodTag[1]} vs ${req.method}` };
+  }
+
+  // Verify event signature
+  const verification = verifyNostrEvent(event);
+  if (!verification.valid) {
+    return { authorized: false, error: verification.error };
+  }
+
+  // Get DID from pubkey
+  const did = `did:nostr:${event.pubkey}`;
 
   // Check balance
   const balance = state.balances[did] || 0;
@@ -469,7 +651,7 @@ function verify402Payment(req, cost) {
 
   console.log('[402]', did.slice(0, 20) + '...', 'paid', cost, 'GSAT for', req.url);
 
-  return { authorized: true, did, remaining: state.balances[did] };
+  return { authorized: true, did, remaining: state.balances[did], pubkey: event.pubkey };
 }
 
 // Start HTTP server for AMM API
@@ -477,7 +659,7 @@ function startApiServer() {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-DID, X-Timestamp, X-Signature');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(200);
@@ -526,6 +708,21 @@ function startApiServer() {
         return;
       }
 
+      // POST /withdraw - Withdraw sats to Bitcoin address
+      if (req.method === 'POST' && req.url === '/withdraw') {
+        const request = await readBody();
+        const verification = verifyWithdrawSignature(request);
+        if (!verification.valid) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: verification.error }));
+          return;
+        }
+        const result = await processWithdraw(request);
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result.success ? result : { error: result.error }));
+        return;
+      }
+
       // GET /balance/:did - Check balance (free)
       if (req.method === 'GET' && req.url.startsWith('/balance/')) {
         const did = decodeURIComponent(req.url.slice(9));
@@ -539,7 +736,8 @@ function startApiServer() {
       // GET /api/quote - Demo 402 endpoint (costs 1 GSAT)
       if (req.method === 'GET' && req.url === '/api/quote') {
         const cost = 1; // 1 GSAT per request
-        const payment = verify402Payment(req, cost);
+        const fullUrl = `http://localhost:${CONFIG.apiPort}${req.url}`;
+        const payment = verify402Payment(req, cost, fullUrl);
 
         if (!payment.authorized) {
           res.writeHead(402, { 'Content-Type': 'application/json' });
@@ -547,7 +745,8 @@ function startApiServer() {
             error: payment.error,
             cost,
             balance: payment.balance,
-            depositAddress: payment.depositAddress
+            depositAddress: payment.depositAddress,
+            nip98: { kind: 27235, url: fullUrl, method: req.method }
           }));
           return;
         }
@@ -591,6 +790,7 @@ function startApiServer() {
     console.log('[API] Endpoints:');
     console.log('  POST /sell      - Sell GSAT for sats');
     console.log('  POST /transfer  - Transfer GSAT to user');
+    console.log('  POST /withdraw  - Withdraw sats to BTC address');
     console.log('  GET  /balance/* - Check balance');
     console.log('  GET  /api/quote - Demo 402 endpoint (1 GSAT)');
     console.log('  GET  /state     - Pool state');

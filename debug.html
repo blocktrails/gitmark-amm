@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Debug - GitSat AMM</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f6fc;
+      color: #0d111c;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 8px;
+      color: #0d111c;
+    }
+    .subtitle { color: #7780a0; font-size: 0.95em; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 20px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+    .card h2 {
+      margin-bottom: 12px;
+      color: #7780a0;
+      font-size: 0.85em;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 12px 0;
+      border-bottom: 1px solid #e8ecfb;
+      gap: 12px;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #7780a0; flex-shrink: 0; }
+    .info-value {
+      font-weight: 500;
+      word-break: break-all;
+      text-align: right;
+    }
+    .info-value a {
+      color: #8b5cf6;
+      text-decoration: none;
+    }
+    .info-value a:hover {
+      text-decoration: underline;
+    }
+
+    .nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .nav a {
+      padding: 8px 16px;
+      background: #fff;
+      border: 1px solid #e8ecfb;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0d111c;
+      font-size: 0.9em;
+    }
+    .nav a.active {
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border-color: transparent;
+    }
+
+    .code {
+      background: #1e1e2e;
+      color: #a6e3a1;
+      border-radius: 12px;
+      padding: 16px;
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 0.8em;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #fc72ff 0%, #8b5cf6 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 0.95em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.85em;
+      font-weight: 500;
+    }
+    .status.confirmed {
+      background: #dcfce7;
+      color: #16a34a;
+    }
+    .status.pending {
+      background: #fef3c7;
+      color: #d97706;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .anchor-item {
+      background: #f5f6fc;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+    .anchor-txid {
+      font-family: monospace;
+      font-size: 0.85em;
+      color: #8b5cf6;
+    }
+    .anchor-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 0.85em;
+      color: #7780a0;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+    }
+    .tab {
+      padding: 10px 16px;
+      background: #f5f6fc;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+    .tab.active {
+      background: #8b5cf6;
+      color: white;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <a href="demo.html">AMM</a>
+      <a href="paywall.html">Paywall</a>
+      <a href="transfer.html">Transfer</a>
+      <a href="debug.html" class="active">Debug</a>
+    </nav>
+
+    <div class="header">
+      <h1>Debug Console</h1>
+      <p class="subtitle">Blockchain verification & state inspection</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('anchors')">Anchors</button>
+      <button class="tab" onclick="showTab('state')">State</button>
+      <button class="tab" onclick="showTab('verify')">Verify</button>
+      <button class="tab" onclick="showTab('withdraw')">Withdraw</button>
+      <button class="tab" onclick="showTab('users')">Users</button>
+    </div>
+
+    <!-- Anchors Tab -->
+    <div class="tab-content active" id="tab-anchors">
+      <div class="card">
+        <h2>Bitcoin Anchors</h2>
+        <p style="color: #7780a0; margin-bottom: 16px; font-size: 0.9em;">
+          State hashes are periodically anchored to Bitcoin testnet4 for auditability.
+        </p>
+        <div id="anchorsList">Loading...</div>
+      </div>
+    </div>
+
+    <!-- State Tab -->
+    <div class="tab-content" id="tab-state">
+      <div class="card">
+        <h2>Pool State</h2>
+        <div id="poolInfo">Loading...</div>
+      </div>
+      <div class="card">
+        <h2>Raw State JSON</h2>
+        <div class="code" id="stateJson">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Verify Tab -->
+    <div class="tab-content" id="tab-verify">
+      <div class="card">
+        <h2>Verify State Hash</h2>
+        <p style="color: #7780a0; margin-bottom: 16px; font-size: 0.9em;">
+          Verify that a state hash matches a Bitcoin anchor transaction.
+        </p>
+        <div class="info-row">
+          <span class="info-label">Anchor Txid</span>
+          <input type="text" id="verifyTxid" placeholder="Enter txid..." style="flex: 1; padding: 8px; border: 1px solid #e8ecfb; border-radius: 8px;">
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="verifyAnchor()">Verify on Mempool</button>
+        </div>
+        <div id="verifyResult" style="margin-top: 16px;"></div>
+      </div>
+      <div class="card">
+        <h2>Compute Current State Hash</h2>
+        <div class="info-row">
+          <span class="info-label">Hash</span>
+          <span class="info-value" id="currentHash" style="font-family: monospace;">--</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="computeHash()">Compute Hash</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Withdraw Tab -->
+    <div class="tab-content" id="tab-withdraw">
+      <div class="card">
+        <h2>Withdraw Sats</h2>
+        <p style="color: #7780a0; margin-bottom: 16px; font-size: 0.9em;">
+          Withdraw your pending sats balance to a Bitcoin testnet4 address.
+        </p>
+        <div class="info-row">
+          <span class="info-label">Sats Balance</span>
+          <span class="info-value" id="withdrawSatsBalance">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">BTC Address</span>
+          <input type="text" id="withdrawAddress" placeholder="tb1q... or tb1p..." style="flex: 1; padding: 8px; border: 1px solid #e8ecfb; border-radius: 8px; font-family: monospace;">
+        </div>
+        <div class="info-row">
+          <span class="info-label">Amount (sats)</span>
+          <input type="number" id="withdrawAmount" placeholder="1000" min="1000" style="width: 120px; padding: 8px; border: 1px solid #e8ecfb; border-radius: 8px;">
+          <button class="btn" onclick="setMaxWithdraw()" style="padding: 8px 12px; font-size: 0.85em;">MAX</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="withdrawBtn" onclick="requestWithdraw()">Withdraw to Bitcoin</button>
+        </div>
+        <div id="withdrawResult" style="margin-top: 16px;"></div>
+      </div>
+      <div class="card">
+        <h2>Recent Withdrawals</h2>
+        <div id="withdrawalHistory">No withdrawals yet</div>
+      </div>
+    </div>
+
+    <!-- Users Tab -->
+    <div class="tab-content" id="tab-users">
+      <div class="card">
+        <h2>Your Keys</h2>
+        <div class="info-row">
+          <span class="info-label">Private Key</span>
+          <span class="info-value" id="userPrivkey" style="font-family: monospace; font-size: 0.8em;">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Public Key</span>
+          <span class="info-value" id="userPubkey" style="font-family: monospace; font-size: 0.8em;">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">DID</span>
+          <span class="info-value" id="userDid" style="font-family: monospace; font-size: 0.8em;">--</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="exportKey()">Copy Private Key</button>
+          <button class="btn" onclick="importKey()" style="background: #6b7280;">Import Key</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>All Balances</h2>
+        <div id="allBalances">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { sha256 } from 'https://esm.sh/@noble/hashes@1.6.1/sha256';
+    import { schnorr } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
+    import { bytesToHex, hexToBytes } from 'https://esm.sh/@noble/hashes@1.6.1/utils';
+
+    const API_BASE = 'http://localhost:3456';
+    const MEMPOOL_API = 'https://mempool.space/testnet4/api';
+    let stateData = null;
+
+    // Tab switching
+    window.showTab = function(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.tab-content#tab-${tabName}`).classList.add('active');
+      event.target.classList.add('active');
+    };
+
+    // Load state
+    async function loadState() {
+      try {
+        const res = await fetch(`${API_BASE}/state`);
+        stateData = await res.json();
+
+        // Pool info
+        const poolHtml = `
+          <div class="info-row">
+            <span class="info-label">Sats Reserve</span>
+            <span class="info-value">${stateData.pool.satsReserve?.toLocaleString() || '--'}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Token Reserve</span>
+            <span class="info-value">${stateData.pool.tokenReserve?.toLocaleString() || '--'} GSAT</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Price</span>
+            <span class="info-value">${(stateData.pool.satsReserve / stateData.pool.tokenReserve).toFixed(4)} sats/GSAT</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">TX Count</span>
+            <span class="info-value">${stateData.txCount}</span>
+          </div>
+        `;
+        document.getElementById('poolInfo').innerHTML = poolHtml;
+
+        // Anchors
+        if (stateData.anchors && stateData.anchors.length > 0) {
+          const anchorsHtml = stateData.anchors.map(a => `
+            <div class="anchor-item">
+              <a class="anchor-txid" href="https://mempool.space/testnet4/tx/${a.txid}" target="_blank">
+                ${a.txid.slice(0, 16)}...${a.txid.slice(-8)}
+              </a>
+              <div class="anchor-meta">
+                <span>TX #${a.txCount}</span>
+                <span>${new Date(a.timestamp).toLocaleString()}</span>
+              </div>
+              <div style="margin-top: 8px; font-size: 0.8em; font-family: monospace; color: #7780a0;">
+                Hash: ${a.stateHash.slice(0, 24)}...
+              </div>
+            </div>
+          `).join('');
+          document.getElementById('anchorsList').innerHTML = anchorsHtml;
+        } else {
+          document.getElementById('anchorsList').innerHTML = '<div style="color: #7780a0;">No anchors yet</div>';
+        }
+
+        // Raw state
+        document.getElementById('stateJson').textContent = JSON.stringify(stateData, null, 2);
+
+      } catch (e) {
+        document.getElementById('poolInfo').innerHTML = `<div style="color: red;">Error: ${e.message}</div>`;
+      }
+    }
+    loadState();
+
+    // Load user info
+    let privkey = localStorage.getItem('amm-privkey');
+    if (privkey) {
+      const pubkey = bytesToHex(schnorr.getPublicKey(hexToBytes(privkey)));
+      document.getElementById('userPrivkey').textContent = privkey.slice(0, 16) + '...' + privkey.slice(-8);
+      document.getElementById('userPubkey').textContent = pubkey.slice(0, 16) + '...' + pubkey.slice(-8);
+      document.getElementById('userDid').textContent = `did:nostr:${pubkey.slice(0, 12)}...${pubkey.slice(-8)}`;
+    }
+
+    // Export key
+    window.exportKey = function() {
+      if (privkey) {
+        navigator.clipboard.writeText(privkey);
+        alert('Private key copied to clipboard!');
+      }
+    };
+
+    // Import key
+    window.importKey = function() {
+      const key = prompt('Enter private key (64 hex chars):');
+      if (key && key.length === 64 && /^[0-9a-f]+$/i.test(key)) {
+        localStorage.setItem('amm-privkey', key.toLowerCase());
+        location.reload();
+      } else if (key) {
+        alert('Invalid key format');
+      }
+    };
+
+    // Verify anchor
+    window.verifyAnchor = async function() {
+      const txid = document.getElementById('verifyTxid').value.trim();
+      const result = document.getElementById('verifyResult');
+
+      if (!txid) {
+        result.innerHTML = '<span class="status error">Please enter a txid</span>';
+        return;
+      }
+
+      result.innerHTML = 'Checking...';
+
+      try {
+        const res = await fetch(`${MEMPOOL_API}/tx/${txid}`);
+        if (!res.ok) throw new Error('Transaction not found');
+
+        const tx = await res.json();
+
+        const statusHtml = tx.status.confirmed
+          ? `<span class="status confirmed">Confirmed in block ${tx.status.block_height}</span>`
+          : `<span class="status pending">Unconfirmed</span>`;
+
+        // Find matching anchor in state
+        const anchor = stateData?.anchors?.find(a => a.txid === txid);
+        const anchorInfo = anchor
+          ? `<div style="margin-top: 12px;">
+               <strong>State Hash:</strong> ${anchor.stateHash}<br>
+               <strong>TX Count at anchor:</strong> ${anchor.txCount}
+             </div>`
+          : '<div style="margin-top: 12px; color: #7780a0;">Not found in current state anchors</div>';
+
+        result.innerHTML = `
+          ${statusHtml}
+          <div style="margin-top: 12px;">
+            <strong>Fee:</strong> ${tx.fee} sats<br>
+            <strong>Inputs:</strong> ${tx.vin.length}<br>
+            <strong>Outputs:</strong> ${tx.vout.length}
+          </div>
+          ${anchorInfo}
+          <div style="margin-top: 12px;">
+            <a href="https://mempool.space/testnet4/tx/${txid}" target="_blank" style="color: #8b5cf6;">View on Mempool →</a>
+          </div>
+        `;
+      } catch (e) {
+        result.innerHTML = `<span class="status error">${e.message}</span>`;
+      }
+    };
+
+    // Compute hash
+    window.computeHash = async function() {
+      try {
+        // Fetch full state from solid.social or local
+        const res = await fetch('https://solid.social/mel/public/gitmark-amm/state.json');
+        const state = await res.json();
+        const stateJson = JSON.stringify(state);
+        const hash = bytesToHex(sha256(new TextEncoder().encode(stateJson)));
+        document.getElementById('currentHash').textContent = hash;
+      } catch (e) {
+        document.getElementById('currentHash').textContent = 'Error: ' + e.message;
+      }
+    };
+
+    // Load all balances
+    async function loadBalances() {
+      try {
+        const res = await fetch('https://solid.social/mel/public/gitmark-amm/state.json');
+        const state = await res.json();
+
+        const balances = Object.entries(state.balances || {})
+          .filter(([k]) => k.startsWith('did:'))
+          .map(([did, gsat]) => ({
+            did,
+            gsat,
+            sats: state.satsBalances?.[did] || 0
+          }))
+          .sort((a, b) => b.gsat - a.gsat);
+
+        const html = balances.map(b => `
+          <div class="info-row">
+            <span class="info-label" style="font-size: 0.85em; font-family: monospace;">
+              ${b.did.slice(0, 16)}...${b.did.slice(-8)}
+            </span>
+            <span class="info-value">${b.gsat.toLocaleString()} GSAT</span>
+          </div>
+        `).join('');
+
+        document.getElementById('allBalances').innerHTML = html || '<div style="color: #7780a0;">No users</div>';
+      } catch (e) {
+        document.getElementById('allBalances').innerHTML = `<div style="color: red;">Error: ${e.message}</div>`;
+      }
+    }
+    loadBalances();
+
+    // Withdrawal functions
+    let userSatsBalance = 0;
+    const pubkey = privkey ? bytesToHex(schnorr.getPublicKey(hexToBytes(privkey))) : null;
+    const did = pubkey ? `did:nostr:${pubkey}` : null;
+
+    async function loadWithdrawBalance() {
+      if (!did) return;
+      try {
+        const res = await fetch(`${API_BASE}/balance/${encodeURIComponent(did)}`);
+        const data = await res.json();
+        userSatsBalance = data.sats;
+        document.getElementById('withdrawSatsBalance').textContent = `${data.sats.toLocaleString()} sats`;
+      } catch (e) {
+        document.getElementById('withdrawSatsBalance').textContent = 'Error';
+      }
+    }
+    loadWithdrawBalance();
+
+    window.setMaxWithdraw = function() {
+      document.getElementById('withdrawAmount').value = userSatsBalance;
+    };
+
+    window.requestWithdraw = async function() {
+      const btn = document.getElementById('withdrawBtn');
+      const result = document.getElementById('withdrawResult');
+      const address = document.getElementById('withdrawAddress').value.trim();
+      const amount = parseInt(document.getElementById('withdrawAmount').value);
+
+      if (!address) {
+        result.innerHTML = '<span class="status error">Please enter a Bitcoin address</span>';
+        return;
+      }
+
+      if (!amount || amount < 1000) {
+        result.innerHTML = '<span class="status error">Minimum withdrawal is 1000 sats</span>';
+        return;
+      }
+
+      if (amount > userSatsBalance) {
+        result.innerHTML = `<span class="status error">Insufficient balance: ${userSatsBalance} sats</span>`;
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+      result.innerHTML = 'Signing and broadcasting...';
+
+      try {
+        // Build withdrawal request
+        const request = {
+          action: 'withdraw',
+          did: did,
+          amount: amount,
+          address: address,
+          timestamp: Date.now()
+        };
+
+        // Sign request
+        const message = JSON.stringify(request);
+        const messageHash = sha256(new TextEncoder().encode(message));
+        const signature = schnorr.sign(messageHash, hexToBytes(privkey));
+
+        // Add signature to request
+        request.pubkey = pubkey;
+        request.signature = bytesToHex(signature);
+
+        // Send request
+        const res = await fetch(`${API_BASE}/withdraw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request)
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          result.innerHTML = `
+            <span class="status confirmed">Withdrawal Successful!</span>
+            <div style="margin-top: 12px;">
+              <strong>Amount:</strong> ${data.amount} sats<br>
+              <strong>Fee:</strong> ${data.fee} sats<br>
+              <strong>New Balance:</strong> ${data.newBalance} sats
+            </div>
+            <div style="margin-top: 12px;">
+              <a href="https://mempool.space/testnet4/tx/${data.txid}" target="_blank" style="color: #8b5cf6;">
+                View TX: ${data.txid.slice(0, 16)}...
+              </a>
+            </div>
+          `;
+
+          // Clear form
+          document.getElementById('withdrawAddress').value = '';
+          document.getElementById('withdrawAmount').value = '';
+          loadWithdrawBalance();
+        } else {
+          throw new Error(data.error || 'Withdrawal failed');
+        }
+      } catch (e) {
+        result.innerHTML = `<span class="status error">${e.message}</span>`;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Withdraw to Bitcoin';
+    };
+  </script>
+</body>
+</html>
