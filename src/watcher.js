@@ -8,7 +8,7 @@ import { deriveDepositAddress, deriveDepositPrivkey, encodeBech32m } from './dep
 import { sha256 } from '@noble/hashes/sha2.js';
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
-import * as bt from '/home/melvin/remote/github.com/blocktrails/blocktrails/src/index.js';
+import * as bt from 'blocktrails';
 import fs from 'fs/promises';
 import path from 'path';
 import http from 'http';

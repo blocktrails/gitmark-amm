@@ -20,6 +20,7 @@
   "homepage": "https://github.com/blocktrails/gitmark-amm#readme",
   "dependencies": {
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1"
+    "@noble/hashes": "^2.0.1",
+    "blocktrails": "^0.0.11"
   }
 }
