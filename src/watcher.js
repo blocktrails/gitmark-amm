@@ -1000,11 +1000,57 @@ if (process.argv[1]?.endsWith('watcher.js')) {
     await loadUsers();
     console.log('\nRegistered users:');
     for (const user of users) {
-      const balance = state.balances[user.uri] || 0;
+      const gsatBal = getBalance(user.uri, 'GSAT');
+      const satsBal = getBalance(user.uri, 'satoshi');
       console.log(`  ${user.uri.slice(0, 40)}...`);
       console.log(`    Address: ${user.address}`);
-      console.log(`    Balance: ${balance} GSAT`);
+      console.log(`    Balance: ${gsatBal} GSAT, ${satsBal} sats`);
     }
+    process.exit(0);
+  }
+
+  // Add liquidity command
+  if (process.argv[2] === 'add-liquidity') {
+    const sats = parseInt(process.argv[3], 10);
+    const gsat = parseInt(process.argv[4], 10);
+    if (!sats || !gsat || sats <= 0 || gsat <= 0) {
+      console.log('Usage: node src/watcher.js add-liquidity <sats> <gsat>');
+      console.log('Example: node src/watcher.js add-liquidity 1000000 500000');
+      process.exit(1);
+    }
+    await loadState();
+    const pool = getPoolReserves();
+    const oldPrice = (pool.satsReserve / pool.tokenReserve).toFixed(4);
+    setPoolReserves(pool.satsReserve + sats, pool.tokenReserve + gsat);
+    const newPool = getPoolReserves();
+    const newPrice = (newPool.satsReserve / newPool.tokenReserve).toFixed(4);
+
+    // Update k constant
+    const poolEntry = getPool();
+    if (poolEntry) poolEntry.k = newPool.satsReserve * newPool.tokenReserve;
+
+    state.processedTxids = Array.from(processedTxids);
+    await fs.writeFile(CONFIG.stateFile, JSON.stringify(state, null, 2));
+
+    console.log('\n=== Liquidity Added ===');
+    console.log(`Added: ${sats.toLocaleString()} sats + ${gsat.toLocaleString()} GSAT`);
+    console.log(`Pool before: ${pool.satsReserve.toLocaleString()} sats / ${pool.tokenReserve.toLocaleString()} GSAT (${oldPrice} sats/GSAT)`);
+    console.log(`Pool after:  ${newPool.satsReserve.toLocaleString()} sats / ${newPool.tokenReserve.toLocaleString()} GSAT (${newPrice} sats/GSAT)`);
+    console.log(`New k: ${(newPool.satsReserve * newPool.tokenReserve).toLocaleString()}`);
+    process.exit(0);
+  }
+
+  // Show pool status
+  if (process.argv[2] === 'status') {
+    await loadState();
+    const pool = getPoolReserves();
+    const price = (pool.satsReserve / pool.tokenReserve).toFixed(4);
+    console.log('\n=== Pool Status ===');
+    console.log(`Sats reserve:  ${pool.satsReserve.toLocaleString()}`);
+    console.log(`GSAT reserve:  ${pool.tokenReserve.toLocaleString()}`);
+    console.log(`Price:         ${price} sats/GSAT`);
+    console.log(`k constant:    ${pool.k.toLocaleString()}`);
+    console.log(`Transactions:  ${state.txCount}`);
     process.exit(0);
   }
 
