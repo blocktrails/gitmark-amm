@@ -334,8 +334,9 @@
 
     <!-- How it works -->
     <div class="info-box">
-      <strong>How to use:</strong> Generate a key, then deposit sats to get GSAT tokens.
-      Your balance is tracked on our ledger (did:nostr). Swaps coming soon!
+      <strong>How to use:</strong> Generate a key, then swap sats ↔ GSAT.
+      <br>• <b>Buy:</b> Send sats to your deposit address → receive GSAT
+      <br>• <b>Sell:</b> Click sell → sats credited instantly
     </div>
 
     <!-- Pool Stats -->
@@ -370,14 +371,25 @@
           <span class="wallet-label">Your DID</span>
           <span class="wallet-value" id="yourDid">-</span>
         </div>
-        <div class="wallet-row" style="margin-bottom: 12px;">
-          <span class="wallet-label">Balance</span>
-          <span class="wallet-balance" id="yourBalance">0 GSAT</span>
+        <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+          <div class="wallet-row" style="flex: 1;">
+            <span class="wallet-label">GSAT Balance</span>
+            <span class="wallet-balance" id="yourBalance">0</span>
+          </div>
+          <div class="wallet-row" style="flex: 1;">
+            <span class="wallet-label">Sats Balance</span>
+            <span class="wallet-balance" id="yourSatsBalance">0</span>
+          </div>
         </div>
         <div class="deposit-section">
-          <div class="wallet-label" style="margin-bottom: 6px;">Your Deposit Address</div>
-          <div class="deposit-address" id="depositAddress">-</div>
-          <button class="btn-secondary" style="margin-top: 8px; width: 100%;" onclick="copyDepositAddress(this)">Copy Address</button>
+          <div class="wallet-label" style="margin-bottom: 6px;">Your Deposit Address (for buying GSAT)</div>
+          <div style="display: flex; gap: 12px; align-items: flex-start;">
+            <canvas id="qrCode" width="100" height="100" style="border: 1px solid #e5e5e5; border-radius: 4px;"></canvas>
+            <div style="flex: 1;">
+              <div class="deposit-address" id="depositAddress" style="font-size: 11px;">-</div>
+              <button class="btn-secondary" style="margin-top: 8px; width: 100%;" onclick="copyDepositAddress(this)">Copy Address</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -453,12 +465,37 @@
     window.blocktrails = blocktrails;
 
     const STATE_URL = 'https://solid.social/mel/public/gitmark-amm/state.json';
+    const SELL_API = 'http://localhost:3456/sell'; // Local sell API (run: node src/sell-api.js)
     const AMM_PUBKEY = '034e138880a395b71336ee922313f3b86abd0fc29ddc7a58c5efba9d82132f53ef';
     const AMM_ADDRESS = 'tb1pfcfc3q9rjkm3xdhwjg338uacd27sls5am3a93300h2wcyye020hsxy40ve';
 
     let state = null;
     let privkey = localStorage.getItem('amm-privkey') || '';
     let swapMode = 'buy'; // 'buy' = sats→GSAT, 'sell' = GSAT→sats
+
+    // Simple QR code generator (for bitcoin: URIs)
+    function generateQR(canvas, text) {
+      // Using a minimal QR implementation
+      const size = canvas.width;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+
+      // For now, just show a placeholder with the address
+      ctx.fillStyle = '#000000';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Scan with', size/2, size/2 - 10);
+      ctx.fillText('wallet', size/2, size/2 + 5);
+      ctx.font = '8px monospace';
+      ctx.fillText(text.slice(0, 12) + '...', size/2, size/2 + 20);
+
+      // Draw border pattern to indicate it's a QR placeholder
+      ctx.strokeStyle = '#ccc';
+      for (let i = 0; i < 4; i++) {
+        ctx.strokeRect(i * 3, i * 3, size - i * 6, size - i * 6);
+      }
+    }
 
     function hexToBytes(hex) {
       return new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
@@ -587,25 +624,31 @@
       if (privkey) {
         const pubkey = nostrTools.getPublicKey(privkey);
         const did = getDid(pubkey);
-        const balance = state.balances[did] || 0;
+        const gsatBalance = state.balances[did] || 0;
+        const satsBalance = state.satsBalances?.[did] || 0;
 
         // Derive deposit address
         const depositAddr = deriveDepositAddress(AMM_PUBKEY, did);
 
         document.getElementById('walletInfo').style.display = 'block';
         document.getElementById('yourDid').textContent = shortDid(did);
-        document.getElementById('yourBalance').textContent = formatNum(balance) + ' GSAT';
+        document.getElementById('yourBalance').textContent = formatNum(gsatBalance);
+        document.getElementById('yourSatsBalance').textContent = formatNum(satsBalance);
         document.getElementById('depositAddress').textContent = depositAddr;
         document.getElementById('swapBtn').disabled = false;
-        document.getElementById('swapBtn').textContent = swapMode === 'buy' ? 'Buy GSAT' : 'Sell GSAT';
+        document.getElementById('swapBtn').textContent = swapMode === 'buy' ? 'Deposit to Buy' : 'Sell GSAT';
 
-        // Balance displays
+        // Generate QR code for deposit address
+        const qrCanvas = document.getElementById('qrCode');
+        if (qrCanvas) generateQR(qrCanvas, depositAddr);
+
+        // Balance displays in swap card
         if (swapMode === 'buy') {
-          document.getElementById('payBalance').textContent = 'Deposit sats to AMM';
-          document.getElementById('receiveBalance').textContent = `Balance: ${formatNum(balance)} GSAT`;
+          document.getElementById('payBalance').textContent = 'Send to deposit address';
+          document.getElementById('receiveBalance').textContent = `Balance: ${formatNum(gsatBalance)} GSAT`;
         } else {
-          document.getElementById('payBalance').textContent = `Balance: ${formatNum(balance)} GSAT`;
-          document.getElementById('receiveBalance').textContent = 'Receive sats';
+          document.getElementById('payBalance').textContent = `Balance: ${formatNum(gsatBalance)} GSAT`;
+          document.getElementById('receiveBalance').textContent = `Balance: ${formatNum(satsBalance)} sats`;
         }
       }
 
@@ -716,31 +759,77 @@
 
       const pubkey = nostrTools.getPublicKey(privkey);
       const did = getDid(pubkey);
-      const balance = state.balances[did] || 0;
+      const gsatBalance = state.balances[did] || 0;
+      const depositAddr = deriveDepositAddress(AMM_PUBKEY, did);
 
       if (swapMode === 'buy') {
+        // Buy mode: show deposit instructions
         const output = getAmountOut(input, state.amm.satsReserve, state.amm.tokenReserve);
-        debug('Buy preview', {
-          action: 'BUY',
-          pay: `${input} sats`,
-          receive: `${output} GSAT`,
-          depositTo: AMM_ADDRESS,
-          yourDid: did
+        debug('Buy GSAT', {
+          action: 'DEPOSIT',
+          send: `${formatNum(input)} sats`,
+          receive: `~${formatNum(output)} GSAT`,
+          depositAddress: depositAddr
         });
-        alert(`To buy ${formatNum(output)} GSAT:\n\n1. Send ${formatNum(input)} sats to:\n${AMM_ADDRESS}\n\n2. Your balance will be credited after confirmation.\n\n(Automated deposits coming soon)`);
+        alert(`To buy ~${formatNum(output)} GSAT:\n\n1. Send ${formatNum(input)} sats to your deposit address:\n\n${depositAddr}\n\n2. Your balance will be credited after confirmation.`);
       } else {
-        if (input > balance) {
-          alert(`Insufficient balance: ${formatNum(balance)} GSAT`);
+        // Sell mode: execute instant sell
+        if (input > gsatBalance) {
+          alert(`Insufficient GSAT balance.\nYou have: ${formatNum(gsatBalance)} GSAT`);
           return;
         }
-        const output = getAmountOut(input, state.amm.tokenReserve, state.amm.satsReserve);
-        debug('Sell preview', {
-          action: 'SELL',
-          pay: `${input} GSAT`,
-          receive: `${output} sats`,
-          yourDid: did
-        });
-        alert(`Sell ${formatNum(input)} GSAT for ${formatNum(output)} sats\n\n(Withdrawals coming soon)`);
+
+        const satsOut = getAmountOut(input, state.amm.tokenReserve, state.amm.satsReserve);
+
+        // Create signed sell request
+        const sellRequest = {
+          action: 'sell',
+          did: did,
+          gsatAmount: input,
+          expectedSats: satsOut,
+          timestamp: Date.now()
+        };
+
+        // Sign with nostr key
+        const message = JSON.stringify(sellRequest);
+        const messageHash = bytesToHex(sha256(new TextEncoder().encode(message)));
+        const signature = await nostrTools.schnorr.sign(messageHash, privkey);
+
+        const signedRequest = {
+          ...sellRequest,
+          pubkey: pubkey,
+          signature: bytesToHex(signature)
+        };
+
+        debug('Sell Request (signed)', signedRequest);
+
+        // Try to submit to API
+        const btn = document.getElementById('swapBtn');
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+
+        try {
+          const res = await fetch(SELL_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(signedRequest)
+          });
+
+          if (res.ok) {
+            const result = await res.json();
+            alert(`Sold ${formatNum(input)} GSAT for ${formatNum(satsOut)} sats!\n\nYour sats balance has been credited.`);
+            await loadState(); // Refresh state
+          } else {
+            throw new Error('API returned ' + res.status);
+          }
+        } catch (e) {
+          // API not available - show manual instructions
+          console.log('Sell API not available:', e.message);
+          alert(`Sell request signed!\n\nSell: ${formatNum(input)} GSAT\nReceive: ${formatNum(satsOut)} sats\n\nThe signed request is in the debug panel.\n(Backend processing coming soon)`);
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Sell GSAT';
       }
     };
 

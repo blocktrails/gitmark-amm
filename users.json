@@ -3,5 +3,15 @@
     "uri": "did:nostr:4ccef8c68cf18f8f156a0bb017dfd6e0cc7ebf1672fa2d769e02e2efc700328b",
     "address": "tb1pdypd4k38q4x0qz5x7hqavjhfpgt2n4tm0egggx587aafqn3wsnds8gm3yf",
     "lastTxid": "0c568617e70b4cc369a6f6e29a168193f8d200a46625037d11a2ddaa8acdfa30"
+  },
+  {
+    "uri": "did:nostr:7e3472759cc0720570795114f9484bb6ab1f6d3c0f41f1cb0550502163ad74fd",
+    "address": "tb1pqxmrkvuyea9v7vv323tmptjfle5tj9y6cpe5g8wqvlz6d5xmfhlqctx7py",
+    "lastTxid": null
+  },
+  {
+    "uri": "did:nostr:a15c28155e58b6b12cdc1dce3d5134f0870064d3314a64ff89d24c2c5b8bdb1b",
+    "address": "tb1p0fv2683x2j5htf9n7fkpmxsy4h7yuxmetelq2c6vp8u2zw9rhp2s5kha7v",
+    "lastTxid": "d76d84687bc70948ecde564d1ae8f41e2b3dbc6ff71a9ac6807dba1be9f7d7b8"
   }
 ]

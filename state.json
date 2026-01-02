@@ -6,14 +6,16 @@
     "totalSupply": 21000000
   },
   "balances": {
-    "amm": 1000000,
-    "treasury": 20000000,
-    "did:nostr:4ccef8c68cf18f8f156a0bb017dfd6e0cc7ebf1672fa2d769e02e2efc700328b": 9871
+    "amm": 2020000,
+    "treasury": 18475816,
+    "did:nostr:4ccef8c68cf18f8f156a0bb017dfd6e0cc7ebf1672fa2d769e02e2efc700328b": 19549,
+    "did:nostr:a15c28155e58b6b12cdc1dce3d5134f0870064d3314a64ff89d24c2c5b8bdb1b": 484635
   },
+  "satsBalances": {},
   "amm": {
-    "tokenReserve": 990129,
-    "satsReserve": 1010000,
-    "k": 1000000000000
+    "tokenReserve": 2020000,
+    "satsReserve": 2020000,
+    "k": 4080400000000
   },
-  "txCount": 1
+  "txCount": 3
 }

@@ -18,7 +18,7 @@ const CONFIG = {
   ammPrivkey: process.env.AMM_PRIVKEY || '',
   network: 'tbtc4',
   pollInterval: 30000, // 30 seconds
-  minConfirmations: 1,
+  minConfirmations: 0,
   mempoolApi: 'https://mempool.space/testnet4/api'
 };
 
