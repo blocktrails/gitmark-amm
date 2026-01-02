@@ -218,6 +218,24 @@
     }
     .btn-secondary:hover { background: #e8ecfb; }
 
+    .deposit-section {
+      background: linear-gradient(135deg, rgba(252,114,255,0.08), rgba(139,92,246,0.08));
+      border: 1px dashed rgba(252,114,255,0.3);
+      border-radius: 12px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .deposit-address {
+      font-family: monospace;
+      font-size: 0.75em;
+      word-break: break-all;
+      color: #5b21b6;
+      background: #fff;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #e8ecfb;
+    }
+
     .leaderboard-row {
       display: flex;
       justify-content: space-between;
@@ -352,9 +370,14 @@
           <span class="wallet-label">Your DID</span>
           <span class="wallet-value" id="yourDid">-</span>
         </div>
-        <div class="wallet-row">
+        <div class="wallet-row" style="margin-bottom: 12px;">
           <span class="wallet-label">Balance</span>
           <span class="wallet-balance" id="yourBalance">0 GSAT</span>
+        </div>
+        <div class="deposit-section">
+          <div class="wallet-label" style="margin-bottom: 6px;">Your Deposit Address</div>
+          <div class="deposit-address" id="depositAddress">-</div>
+          <button class="btn-secondary" style="margin-top: 8px; width: 100%;" onclick="copyDepositAddress()">Copy Address</button>
         </div>
       </div>
     </div>
@@ -423,11 +446,14 @@
   <script type="module">
     import * as nostrTools from 'https://esm.sh/nostr-tools@2.7.0';
     import * as blocktrails from 'https://esm.sh/blocktrails@0.0.11';
+    import { sha256 } from 'https://esm.sh/@noble/hashes@1.7.1/sha2';
+    import { secp256k1 } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
 
     window.nostrTools = nostrTools;
     window.blocktrails = blocktrails;
 
     const STATE_URL = 'https://solid.social/mel/public/gitmark-amm/state.json';
+    const AMM_PUBKEY = '034e138880a395b71336ee922313f3b86abd0fc29ddc7a58c5efba9d82132f53ef';
     const AMM_ADDRESS = 'tb1pfcfc3q9rjkm3xdhwjg338uacd27sls5am3a93300h2wcyye020hsxy40ve';
 
     let state = null;
@@ -447,6 +473,75 @@
       return pk.slice(0, 6) + '...' + pk.slice(-4);
     }
     function formatNum(n) { return n?.toLocaleString() || '0'; }
+
+    // Deposit address derivation (per spec/deposit-addresses.md)
+    function taggedHash(tag, ...data) {
+      const tagHash = sha256(new TextEncoder().encode(tag));
+      const totalLen = data.reduce((sum, arr) => sum + arr.length, 0);
+      const combined = new Uint8Array(tagHash.length * 2 + totalLen);
+      combined.set(tagHash, 0);
+      combined.set(tagHash, tagHash.length);
+      let offset = tagHash.length * 2;
+      for (const arr of data) {
+        combined.set(arr, offset);
+        offset += arr.length;
+      }
+      return sha256(combined);
+    }
+
+    function deriveDepositAddress(ammPubkey, userUri) {
+      const pubkeyBytes = hexToBytes(ammPubkey);
+      const uriBytes = new TextEncoder().encode(userUri.toLowerCase().trim());
+      const tweak = taggedHash('gitsat/deposit', pubkeyBytes, uriBytes);
+
+      const P = secp256k1.Point.fromHex(ammPubkey);
+      const tweakScalar = BigInt('0x' + bytesToHex(tweak));
+      const tweakPoint = secp256k1.Point.BASE.multiply(tweakScalar);
+      const Q = P.add(tweakPoint);
+
+      const xonly = Q.toBytes().slice(1);
+      return encodeBech32m('tb', 1, xonly);
+    }
+
+    // Bech32m encoding
+    const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+    const BECH32M_CONST = 0x2bc830a3;
+    function bech32Polymod(values) {
+      const GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+      let chk = 1;
+      for (const v of values) {
+        const top = chk >> 25;
+        chk = ((chk & 0x1ffffff) << 5) ^ v;
+        for (let i = 0; i < 5; i++) if ((top >> i) & 1) chk ^= GEN[i];
+      }
+      return chk;
+    }
+    function bech32HrpExpand(hrp) {
+      const ret = [];
+      for (const c of hrp) ret.push(c.charCodeAt(0) >> 5);
+      ret.push(0);
+      for (const c of hrp) ret.push(c.charCodeAt(0) & 31);
+      return ret;
+    }
+    function convertBits(data, fromBits, toBits, pad) {
+      let acc = 0, bits = 0;
+      const ret = [], maxv = (1 << toBits) - 1;
+      for (const value of data) {
+        acc = (acc << fromBits) | value;
+        bits += fromBits;
+        while (bits >= toBits) { bits -= toBits; ret.push((acc >> bits) & maxv); }
+      }
+      if (pad && bits > 0) ret.push((acc << (toBits - bits)) & maxv);
+      return ret;
+    }
+    function encodeBech32m(hrp, witnessVersion, data) {
+      const converted = convertBits(data, 8, 5, true);
+      const values = [witnessVersion, ...converted];
+      const polymod = bech32Polymod([...bech32HrpExpand(hrp), ...values, 0, 0, 0, 0, 0, 0]) ^ BECH32M_CONST;
+      const checksum = [];
+      for (let i = 0; i < 6; i++) checksum.push((polymod >> (5 * (5 - i))) & 31);
+      return hrp + '1' + [...values, ...checksum].map(d => CHARSET[d]).join('');
+    }
 
     // AMM math
     function getAmountOut(amountIn, reserveIn, reserveOut) {
@@ -493,9 +588,13 @@
         const did = getDid(pubkey);
         const balance = state.balances[did] || 0;
 
+        // Derive deposit address
+        const depositAddr = deriveDepositAddress(AMM_PUBKEY, did);
+
         document.getElementById('walletInfo').style.display = 'block';
         document.getElementById('yourDid').textContent = shortDid(did);
         document.getElementById('yourBalance').textContent = formatNum(balance) + ' GSAT';
+        document.getElementById('depositAddress').textContent = depositAddr;
         document.getElementById('swapBtn').disabled = false;
         document.getElementById('swapBtn').textContent = swapMode === 'buy' ? 'Buy GSAT' : 'Sell GSAT';
 
@@ -571,10 +670,12 @@
       localStorage.setItem('amm-privkey', privkey);
 
       const pubkey = nostrTools.getPublicKey(privkey);
+      const did = getDid(pubkey);
+      const depositAddr = deriveDepositAddress(AMM_PUBKEY, did);
       debug('Generated key', {
-        did: getDid(pubkey),
-        depositAddress: AMM_ADDRESS,
-        note: 'Send sats to deposit address to buy GSAT'
+        did: did,
+        depositAddress: depositAddr,
+        note: 'Send testnet4 sats to YOUR deposit address above'
       });
       updateUI();
     };
@@ -587,8 +688,24 @@
       }
       localStorage.setItem('amm-privkey', privkey);
       const pubkey = nostrTools.getPublicKey(privkey);
-      debug('Loaded key', { did: getDid(pubkey) });
+      const did = getDid(pubkey);
+      const depositAddr = deriveDepositAddress(AMM_PUBKEY, did);
+      debug('Loaded key', {
+        did: did,
+        depositAddress: depositAddr
+      });
       updateUI();
+    };
+
+    window.copyDepositAddress = function() {
+      const addr = document.getElementById('depositAddress').textContent;
+      if (addr && addr !== '-') {
+        navigator.clipboard.writeText(addr).then(() => {
+          const btn = event.target;
+          btn.textContent = 'Copied!';
+          setTimeout(() => btn.textContent = 'Copy Address', 1500);
+        });
+      }
     };
 
     window.executeSwap = async function() {
