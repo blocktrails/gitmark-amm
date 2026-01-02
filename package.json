@@ -4,7 +4,7 @@
   "description": "A git-native Automated Market Maker (AMM) for swapping testnet4 sats ↔ GSAT tokens.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test-amm.mjs"
   },
   "repository": {
     "type": "git",
