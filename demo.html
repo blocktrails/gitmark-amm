@@ -377,7 +377,7 @@
         <div class="deposit-section">
           <div class="wallet-label" style="margin-bottom: 6px;">Your Deposit Address</div>
           <div class="deposit-address" id="depositAddress">-</div>
-          <button class="btn-secondary" style="margin-top: 8px; width: 100%;" onclick="copyDepositAddress()">Copy Address</button>
+          <button class="btn-secondary" style="margin-top: 8px; width: 100%;" onclick="copyDepositAddress(this)">Copy Address</button>
         </div>
       </div>
     </div>
@@ -698,11 +698,10 @@
       updateUI();
     };
 
-    window.copyDepositAddress = function() {
+    window.copyDepositAddress = function(btn) {
       const addr = document.getElementById('depositAddress').textContent;
       if (addr && addr !== '-') {
         navigator.clipboard.writeText(addr).then(() => {
-          const btn = event.target;
           btn.textContent = 'Copied!';
           setTimeout(() => btn.textContent = 'Copy Address', 1500);
         });
