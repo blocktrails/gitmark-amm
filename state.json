@@ -1,0 +1,17 @@
+{
+  "token": {
+    "name": "GitSat",
+    "symbol": "GSAT",
+    "decimals": 0,
+    "totalSupply": 21000000
+  },
+  "balances": {
+    "amm": 20000000
+  },
+  "amm": {
+    "tokenReserve": 20000000,
+    "satsReserve": 1000000,
+    "k": 20000000000000
+  },
+  "txCount": 0
+}
