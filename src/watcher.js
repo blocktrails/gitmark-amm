@@ -20,7 +20,7 @@ const CONFIG = {
   ammPubkey: '034e138880a395b71336ee922313f3b86abd0fc29ddc7a58c5efba9d82132f53ef',
   ammPrivkey: process.env.AMM_PRIVKEY || 'afad07171c5bef640f07896cffbf9af419277d1dcacf44d4cf7e898cb08ad581',
   network: 'tbtc4',
-  pollInterval: 30000, // 30 seconds
+  pollInterval: 600000, // 10 minutes (use POST /check for manual refresh)
   minConfirmations: 0,
   mempoolApi: 'https://mempool.space/testnet4/api',
   apiPort: 3456,
@@ -766,6 +766,31 @@ function startApiServer() {
         return;
       }
 
+      // POST /check - Manual deposit check (rate limited)
+      if (req.method === 'POST' && req.url === '/check') {
+        const now = Date.now();
+        const minInterval = 10000; // 10 second minimum between checks
+        if (global.lastCheck && now - global.lastCheck < minInterval) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Too many requests', retryAfter: Math.ceil((minInterval - (now - global.lastCheck)) / 1000) }));
+          return;
+        }
+        global.lastCheck = now;
+
+        console.log('[Check] Manual deposit check triggered');
+        const beforeTxCount = state.txCount;
+        await checkDeposits();
+        const newDeposits = state.txCount - beforeTxCount;
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          checked: users.length,
+          newDeposits,
+          txCount: state.txCount
+        }));
+        return;
+      }
+
       // GET /state - Public state info
       if (req.method === 'GET' && req.url === '/state') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -791,6 +816,7 @@ function startApiServer() {
     console.log('  POST /sell      - Sell GSAT for sats');
     console.log('  POST /transfer  - Transfer GSAT to user');
     console.log('  POST /withdraw  - Withdraw sats to BTC address');
+    console.log('  POST /check     - Manual deposit check');
     console.log('  GET  /balance/* - Check balance');
     console.log('  GET  /api/quote - Demo 402 endpoint (1 GSAT)');
     console.log('  GET  /state     - Pool state');
