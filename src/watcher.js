@@ -922,9 +922,20 @@ function startApiServer() {
       // GET /state - Public state info
       if ((req.method === 'GET' || req.method === 'HEAD') && req.url.startsWith('/state')) {
         const pool = getPoolReserves();
+        // Convert WebLedger entries to legacy balances format
+        const balances = {};
+        if (state.entries) {
+          for (const entry of state.entries) {
+            if (entry.type !== 'Pool' && entry.url) {
+              const gsat = entry.amount?.find(a => a.currency === 'GSAT');
+              if (gsat) balances[entry.url] = gsat.value;
+            }
+          }
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           pool: { tokenReserve: pool.tokenReserve, satsReserve: pool.satsReserve, k: pool.k },
+          balances,
           txCount: state.txCount,
           anchors: state.anchors?.slice(-3) || []
         }));
