@@ -1,0 +1,6 @@
+# Private keys
+amm-key.txt
+*.key
+
+# Node
+node_modules/
