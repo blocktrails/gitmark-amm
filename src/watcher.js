@@ -28,10 +28,81 @@ const CONFIG = {
   anchorEnabled: process.env.ANCHOR === 'true'
 };
 
-// State
+// State (WebLedger format)
 let state = null;
 let users = []; // Array of { uri, address, lastTxid }
 let processedTxids = new Set();
+
+// === WebLedger Helpers ===
+
+// Get balance for a URI and currency
+function getBalance(url, currency = 'GSAT') {
+  if (!state.entries) return 0;
+  const entry = state.entries.find(e => e.url === url && e.type !== 'Pool');
+  if (!entry) return 0;
+  const amt = entry.amount.find(a => a.currency === currency);
+  return amt ? amt.value : 0;
+}
+
+// Set balance for a URI and currency
+function setBalance(url, currency, value) {
+  if (!state.entries) state.entries = [];
+  let entry = state.entries.find(e => e.url === url && e.type !== 'Pool');
+  if (!entry) {
+    entry = { type: 'Entry', url, amount: [] };
+    state.entries.push(entry);
+  }
+  const amtIdx = entry.amount.findIndex(a => a.currency === currency);
+  if (amtIdx >= 0) {
+    entry.amount[amtIdx].value = value;
+  } else {
+    entry.amount.push({ currency, value });
+  }
+}
+
+// Get the AMM pool entry
+function getPool() {
+  if (!state.entries) return null;
+  return state.entries.find(e => e.type === 'Pool');
+}
+
+// Get pool reserves (backwards compatible)
+function getPoolReserves() {
+  const pool = getPool();
+  if (pool) {
+    const sats = pool.amount.find(a => a.currency === 'satoshi');
+    const gsat = pool.amount.find(a => a.currency === 'GSAT');
+    return {
+      satsReserve: sats ? sats.value : 0,
+      tokenReserve: gsat ? gsat.value : 0,
+      k: pool.k || 0
+    };
+  }
+  // Fallback for old format
+  return state.amm || { satsReserve: 0, tokenReserve: 0, k: 0 };
+}
+
+// Update pool reserves
+function setPoolReserves(satsReserve, tokenReserve) {
+  let pool = getPool();
+  if (!pool) {
+    pool = {
+      type: 'Pool',
+      url: 'urn:webledger:pool:satoshi:GSAT',
+      amount: [],
+      k: satsReserve * tokenReserve,
+      fee: 0.003
+    };
+    state.entries = state.entries || [];
+    state.entries.push(pool);
+  }
+  const satsIdx = pool.amount.findIndex(a => a.currency === 'satoshi');
+  const gsatIdx = pool.amount.findIndex(a => a.currency === 'GSAT');
+  if (satsIdx >= 0) pool.amount[satsIdx].value = satsReserve;
+  else pool.amount.push({ currency: 'satoshi', value: satsReserve });
+  if (gsatIdx >= 0) pool.amount[gsatIdx].value = tokenReserve;
+  else pool.amount.push({ currency: 'GSAT', value: tokenReserve });
+}
 
 // Helpers
 async function loadState() {
@@ -39,15 +110,59 @@ async function loadState() {
     const data = await fs.readFile(CONFIG.stateFile, 'utf-8');
     state = JSON.parse(data);
 
+    // Migrate old format to WebLedger format if needed
+    if (state.amm && !state.entries) {
+      console.log('[State] Migrating to WebLedger format...');
+      state['@context'] = 'https://w3id.org/webledgers';
+      state.type = 'WebLedger';
+      state.defaultCurrency = 'satoshi';
+      state.entries = [];
+
+      // Migrate pool
+      state.entries.push({
+        type: 'Pool',
+        url: 'urn:webledger:pool:satoshi:GSAT',
+        amount: [
+          { currency: 'satoshi', value: state.amm.satsReserve },
+          { currency: 'GSAT', value: state.amm.tokenReserve }
+        ],
+        k: state.amm.k,
+        fee: 0.003
+      });
+
+      // Migrate user balances
+      for (const [url, gsatValue] of Object.entries(state.balances || {})) {
+        const satsValue = state.satsBalances?.[url] || 0;
+        state.entries.push({
+          type: 'Entry',
+          url,
+          amount: [
+            { currency: 'GSAT', value: gsatValue },
+            { currency: 'satoshi', value: satsValue }
+          ]
+        });
+      }
+
+      // Clean up old fields
+      delete state.amm;
+      delete state.balances;
+      delete state.satsBalances;
+
+      // Save migrated state
+      await fs.writeFile(CONFIG.stateFile, JSON.stringify(state, null, 2));
+      console.log('[State] Migration saved');
+    }
+
     // Load processed txids from state (prevents duplicate processing on restart)
     if (state.processedTxids && Array.isArray(state.processedTxids)) {
       processedTxids = new Set(state.processedTxids);
       console.log('[State] Loaded', processedTxids.size, 'processed txids');
     }
 
+    const pool = getPoolReserves();
     console.log('[State] Loaded:', {
-      satsReserve: state.amm.satsReserve,
-      tokenReserve: state.amm.tokenReserve,
+      satsReserve: pool.satsReserve,
+      tokenReserve: pool.tokenReserve,
       txCount: state.txCount
     });
   } catch (e) {
@@ -235,7 +350,7 @@ async function getTx(txid) {
 
 // AMM math: calculate GSAT output for sats input
 function calculateGsatOut(satsIn) {
-  const { satsReserve, tokenReserve } = state.amm;
+  const { satsReserve, tokenReserve } = getPoolReserves();
   const amountInWithFee = satsIn * 997n; // 0.3% fee
   const numerator = amountInWithFee * BigInt(tokenReserve);
   const denominator = BigInt(satsReserve) * 1000n + amountInWithFee;
@@ -271,19 +386,20 @@ async function processDeposit(user, utxo) {
     gsatOut
   });
 
-  // Update state
-  const currentBalance = state.balances[user.uri] || 0;
-  state.balances[user.uri] = currentBalance + gsatOut;
-  state.amm.satsReserve += satsIn;
-  state.amm.tokenReserve -= gsatOut;
+  // Update state using WebLedger helpers
+  const currentBalance = getBalance(user.uri, 'GSAT');
+  setBalance(user.uri, 'GSAT', currentBalance + gsatOut);
+  const pool = getPoolReserves();
+  setPoolReserves(pool.satsReserve + satsIn, pool.tokenReserve - gsatOut);
   state.txCount = (state.txCount || 0) + 1;
 
   // Mark as processed
   processedTxids.add(txid);
   user.lastTxid = txid;
 
+  const newPool = getPoolReserves();
   console.log('[Deposit] Credited:', gsatOut, 'GSAT to', user.uri.slice(0, 30) + '...');
-  console.log('[Pool] New reserves:', state.amm.satsReserve, 'sats,', state.amm.tokenReserve, 'GSAT');
+  console.log('[Pool] New reserves:', newPool.satsReserve, 'sats,', newPool.tokenReserve, 'GSAT');
 
   await saveState();
   await saveUsers();
@@ -331,7 +447,7 @@ function verifySignature(request) {
 async function processSell(request) {
   const { did, gsatAmount, expectedSats } = request;
 
-  const balance = state.balances[did] || 0;
+  const balance = getBalance(did, 'GSAT');
   if (gsatAmount > balance) {
     return { success: false, error: `Insufficient balance: ${balance} GSAT` };
   }
@@ -342,12 +458,12 @@ async function processSell(request) {
     return { success: false, error: `Price moved. Expected ${expectedSats}, got ${actualSats}` };
   }
 
-  // Update state
-  state.balances[did] = balance - gsatAmount;
-  state.satsBalances = state.satsBalances || {};
-  state.satsBalances[did] = (state.satsBalances[did] || 0) + actualSats;
-  state.amm.tokenReserve += gsatAmount;
-  state.amm.satsReserve -= actualSats;
+  // Update state using WebLedger helpers
+  setBalance(did, 'GSAT', balance - gsatAmount);
+  const currentSats = getBalance(did, 'satoshi');
+  setBalance(did, 'satoshi', currentSats + actualSats);
+  const pool = getPoolReserves();
+  setPoolReserves(pool.satsReserve - actualSats, pool.tokenReserve + gsatAmount);
   state.txCount = (state.txCount || 0) + 1;
 
   await saveState();
@@ -358,14 +474,14 @@ async function processSell(request) {
     success: true,
     gsatSold: gsatAmount,
     satsReceived: actualSats,
-    newGsatBalance: state.balances[did],
-    newSatsBalance: state.satsBalances[did]
+    newGsatBalance: getBalance(did, 'GSAT'),
+    newSatsBalance: getBalance(did, 'satoshi')
   };
 }
 
 // Calculate sats output for GSAT input
 function calculateSatsOut(gsatIn) {
-  const { satsReserve, tokenReserve } = state.amm;
+  const { satsReserve, tokenReserve } = getPoolReserves();
   const fee = BigInt(gsatIn) * 997n;
   return Number((fee * BigInt(satsReserve)) / (BigInt(tokenReserve) * 1000n + fee));
 }
@@ -401,7 +517,7 @@ async function processTransfer(request) {
     return { success: false, error: 'Invalid recipient DID format' };
   }
 
-  const fromBalance = state.balances[from] || 0;
+  const fromBalance = getBalance(from, 'GSAT');
   if (amount > fromBalance) {
     return { success: false, error: `Insufficient balance: ${fromBalance} GSAT` };
   }
@@ -410,9 +526,10 @@ async function processTransfer(request) {
     return { success: false, error: 'Amount must be positive' };
   }
 
-  // Update balances
-  state.balances[from] = fromBalance - amount;
-  state.balances[to] = (state.balances[to] || 0) + amount;
+  // Update balances using WebLedger helpers
+  setBalance(from, 'GSAT', fromBalance - amount);
+  const toBalance = getBalance(to, 'GSAT');
+  setBalance(to, 'GSAT', toBalance + amount);
   state.txCount = (state.txCount || 0) + 1;
 
   await saveState();
@@ -424,8 +541,8 @@ async function processTransfer(request) {
     from,
     to,
     amount,
-    newFromBalance: state.balances[from],
-    newToBalance: state.balances[to]
+    newFromBalance: getBalance(from, 'GSAT'),
+    newToBalance: getBalance(to, 'GSAT')
   };
 }
 
@@ -461,7 +578,7 @@ async function processWithdraw(request) {
   }
 
   // Check sats balance
-  const satsBalance = state.satsBalances?.[did] || 0;
+  const satsBalance = getBalance(did, 'satoshi');
   if (amount > satsBalance) {
     return { success: false, error: `Insufficient sats balance: ${satsBalance}` };
   }
@@ -528,8 +645,8 @@ async function processWithdraw(request) {
 
     await bt.broadcast(txHex, CONFIG.network);
 
-    // Deduct from balance
-    state.satsBalances[did] = satsBalance - amount;
+    // Deduct from balance using WebLedger helpers
+    setBalance(did, 'satoshi', satsBalance - amount);
     state.txCount = (state.txCount || 0) + 1;
 
     // Record withdrawal
@@ -553,7 +670,7 @@ async function processWithdraw(request) {
       amount,
       fee,
       address,
-      newBalance: state.satsBalances[did]
+      newBalance: getBalance(did, 'satoshi')
     };
   } catch (e) {
     console.error('[Withdraw] Error:', e.message);
@@ -643,8 +760,8 @@ function verify402Payment(req, cost, fullUrl) {
   // Get DID from pubkey
   const did = `did:nostr:${event.pubkey}`;
 
-  // Check balance
-  const balance = state.balances[did] || 0;
+  // Check balance using WebLedger helpers
+  const balance = getBalance(did, 'GSAT');
   if (balance < cost) {
     return {
       authorized: false,
@@ -655,13 +772,13 @@ function verify402Payment(req, cost, fullUrl) {
     };
   }
 
-  // Deduct tokens
-  state.balances[did] = balance - cost;
+  // Deduct tokens using WebLedger helpers
+  setBalance(did, 'GSAT', balance - cost);
   state.txCount = (state.txCount || 0) + 1;
 
   console.log('[402]', did.slice(0, 20) + '...', 'paid', cost, 'GSAT for', req.url);
 
-  return { authorized: true, did, remaining: state.balances[did], pubkey: event.pubkey };
+  return { authorized: true, did, remaining: getBalance(did, 'GSAT'), pubkey: event.pubkey };
 }
 
 // Start HTTP server for AMM API
@@ -736,8 +853,8 @@ function startApiServer() {
       // GET /balance/:did - Check balance (free)
       if (req.method === 'GET' && req.url.startsWith('/balance/')) {
         const did = decodeURIComponent(req.url.slice(9));
-        const gsatBalance = state.balances[did] || 0;
-        const satsBalance = state.satsBalances?.[did] || 0;
+        const gsatBalance = getBalance(did, 'GSAT');
+        const satsBalance = getBalance(did, 'satoshi');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ did, gsat: gsatBalance, sats: satsBalance }));
         return;
@@ -765,11 +882,12 @@ function startApiServer() {
         await saveState();
 
         // Return the "paid" content
-        const price = (state.amm.satsReserve / state.amm.tokenReserve).toFixed(4);
+        const pool = getPoolReserves();
+        const price = (pool.satsReserve / pool.tokenReserve).toFixed(4);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           quote: `1 GSAT = ${price} sats`,
-          pool: { sats: state.amm.satsReserve, gsat: state.amm.tokenReserve },
+          pool: { sats: pool.satsReserve, gsat: pool.tokenReserve },
           paid: cost,
           remaining: payment.remaining
         }));
@@ -803,9 +921,10 @@ function startApiServer() {
 
       // GET /state - Public state info
       if (req.method === 'GET' && req.url === '/state') {
+        const pool = getPoolReserves();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          pool: state.amm,
+          pool: { tokenReserve: pool.tokenReserve, satsReserve: pool.satsReserve, k: pool.k },
           txCount: state.txCount,
           anchors: state.anchors?.slice(-3) || []
         }));
