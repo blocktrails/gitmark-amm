@@ -7,12 +7,13 @@
   },
   "balances": {
     "amm": 1000000,
-    "treasury": 20000000
+    "treasury": 20000000,
+    "did:nostr:4ccef8c68cf18f8f156a0bb017dfd6e0cc7ebf1672fa2d769e02e2efc700328b": 9871
   },
   "amm": {
-    "tokenReserve": 1000000,
-    "satsReserve": 1000000,
+    "tokenReserve": 990129,
+    "satsReserve": 1010000,
     "k": 1000000000000
   },
-  "txCount": 0
+  "txCount": 1
 }
