@@ -494,12 +494,13 @@
       const uriBytes = new TextEncoder().encode(userUri.toLowerCase().trim());
       const tweak = taggedHash('gitsat/deposit', pubkeyBytes, uriBytes);
 
-      const P = secp256k1.Point.fromHex(ammPubkey);
+      const Point = secp256k1.ProjectivePoint;
+      const P = Point.fromHex(ammPubkey);
       const tweakScalar = BigInt('0x' + bytesToHex(tweak));
-      const tweakPoint = secp256k1.Point.BASE.multiply(tweakScalar);
+      const tweakPoint = Point.BASE.multiply(tweakScalar);
       const Q = P.add(tweakPoint);
 
-      const xonly = Q.toBytes().slice(1);
+      const xonly = Q.toRawBytes(true).slice(1);
       return encodeBech32m('tb', 1, xonly);
     }
 
