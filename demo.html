@@ -459,7 +459,7 @@
     import * as nostrTools from 'https://esm.sh/nostr-tools@2.7.0';
     import * as blocktrails from 'https://esm.sh/blocktrails@0.0.11';
     import { sha256 } from 'https://esm.sh/@noble/hashes@1.7.1/sha2';
-    import { secp256k1 } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
+    import { secp256k1, schnorr } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
 
     window.nostrTools = nostrTools;
     window.blocktrails = blocktrails;
@@ -793,7 +793,7 @@
         // Sign with nostr key (using noble schnorr)
         const message = JSON.stringify(sellRequest);
         const messageHash = sha256(new TextEncoder().encode(message));
-        const signature = secp256k1.schnorr.sign(messageHash, privkey);
+        const signature = schnorr.sign(messageHash, privkey);
 
         const signedRequest = {
           ...sellRequest,
