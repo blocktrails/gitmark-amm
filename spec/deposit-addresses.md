@@ -170,8 +170,14 @@ AMM privkey: afad07171c5bef640f07896cffbf9af419277d1dcacf44d4cf7e898cb08ad581
 AMM pubkey:  034e138880a395b71336ee922313f3b86abd0fc29ddc7a58c5efba9d82132f53ef
 AMM address: tb1pfcfc3q9rjkm3xdhwjg338uacd27sls5am3a93300h2wcyye020hsxy40ve
 
-User URI:    did:nostr:4ccef8c68cf18f8f156a0bb017dfd6e0cc7ebf1672fa2d769e02e2efc700328b
-Deposit address: <to be computed>
+User URI:        did:nostr:4ccef8c68cf18f8f156a0bb017dfd6e0cc7ebf1672fa2d769e02e2efc700328b
+Tweak:           edd718b8a975116448227013d7e6a453cabb4fbbc05ac8dfbe866e9fe8ab52ff
+Deposit pubkey:  026902dada27054cf00a86f5c1d64ae90a16a9d57b7e50841a87f77a904e2e84db
+Deposit address: tb1pdypd4k38q4x0qz5x7hqavjhfpgt2n4tm0egggx587aafqn3wsnds8gm3yf
+Deposit privkey: 9d841fcfc5d100c85729f980d7a63f492933eff2dbe16d78ce32999fc8ffe73f
+
+WebID URI:       https://solid.social/mel/profile/card#me
+Deposit address: tb1pdlf02asd66kpg86u0f7r98fkesw37vhlksawrm2cp6ye52c3llfqqgewqs
 ```
 
 ## References
